@@ -11,16 +11,13 @@ services:
 
   nginx:
     image: nginx:alpine
-    command: >-
+    command: |
       sh -c "apk add --no-cache openssl >/dev/null && \
       if [ ! -f /etc/nginx/certs/server.key ] || [ ! -f /etc/nginx/certs/server.crt ]; then \
         echo 'Generating self-signed certificate...'; \
         mkdir -p /etc/nginx/certs && \
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-          -keyout /etc/nginx/certs/server.key \
-          -out /etc/nginx/certs/server.crt \
-          -subj "/C=US/ST=State/L=City/O=Pesky/CN=localhost"; \
-      fi; \
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/certs/server.key -out /etc/nginx/certs/server.crt -subj '/C=US/ST=State/L=City/O=Pesky/CN=localhost'; \
+      fi && \
       nginx -g 'daemon off;'"
     ports:
       - "80:80"
