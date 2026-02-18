@@ -7,21 +7,33 @@ export default defineEventHandler(async (event) => {
     }
 
     const body = await readBody(event)
-    const { title, parentId } = body
+    const { title, parentId, workspaceId: requestedWorkspaceId } = body
 
-    // Get user's workspace
-    const member = await prisma.workspaceMember.findFirst({
-        where: { userId: user.id }
-    })
+    let targetWorkspaceId = requestedWorkspaceId
 
-    if (!member) {
-        throw createError({ statusCode: 404, statusMessage: 'No workspace found' })
+    if (targetWorkspaceId) {
+        // Verify membership
+        const member = await prisma.workspaceMember.findFirst({
+            where: { userId: user.id, workspaceId: targetWorkspaceId }
+        })
+        if (!member) {
+            throw createError({ statusCode: 403, statusMessage: 'Not a member of this workspace' })
+        }
+    } else {
+        // Fallback to user's first workspace
+        const member = await prisma.workspaceMember.findFirst({
+            where: { userId: user.id }
+        })
+        if (!member) {
+            throw createError({ statusCode: 404, statusMessage: 'No workspace found' })
+        }
+        targetWorkspaceId = member.workspaceId
     }
 
     const page = await prisma.page.create({
         data: {
             title: title || 'Untitled',
-            workspaceId: member.workspaceId,
+            workspaceId: targetWorkspaceId,
             parentId: parentId || null,
             content: ''
         }
