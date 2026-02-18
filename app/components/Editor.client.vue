@@ -34,7 +34,7 @@
     </div>
     
     <div v-if="editor" class="relative min-h-[500px]" @click="focusEditor">
-        <bubble-menu :editor="editor" :tippy-options="{ duration: 100 }" v-if="editor">
+        <BubbleMenu :editor="editor" v-if="editor">
           <div v-if="editor.isActive('image')" class="bg-white shadow-lg border rounded p-1 flex gap-1">
              <button @click="deleteImage" class="p-1 hover:bg-red-50 text-red-500 rounded" title="Delete Image"><Trash2 :size="16" /></button>
           </div>
@@ -43,9 +43,9 @@
              <button @click="editor.chain().focus().toggleItalic().run()" :class="{ 'bg-gray-100 text-black': editor.isActive('italic'), 'text-gray-500 hover:bg-gray-50': !editor.isActive('italic') }" class="p-1 rounded transition-colors" title="Italic"><Italic :size="16" /></button>
              <button @click="editor.chain().focus().toggleStrike().run()" :class="{ 'bg-gray-100 text-black': editor.isActive('strike'), 'text-gray-500 hover:bg-gray-50': !editor.isActive('strike') }" class="p-1 rounded transition-colors" title="Strike"><Strikethrough :size="16" /></button>
           </div>
-        </bubble-menu>
+        </BubbleMenu>
 
-        <editor-content :editor="editor" class="prose prose-emerald max-w-none focus:outline-none" />
+        <EditorContent :editor="editor" class="prose prose-emerald max-w-none focus:outline-none" />
         <div v-if="isDragging" class="absolute inset-0 bg-blue-50/50 border-2 border-dashed border-blue-400 rounded-lg pointer-events-none flex items-center justify-center">
             <span class="text-blue-500 font-medium bg-white px-4 py-2 rounded shadow-sm">Drop image to upload</span>
         </div>
@@ -70,14 +70,15 @@ import { BubbleMenu } from '@tiptap/vue-3/menus'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
-import BubbleMenuExtension from '@tiptap/extension-bubble-menu'
 import { Bold, Italic, Strikethrough, Heading1, Heading2, List, Image as ImageIcon, Trash2 } from 'lucide-vue-next'
 import { ref, watch, onBeforeUnmount } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: string
   editable?: boolean
-}>()
+}>(), {
+  editable: true,
+})
 
 const emit = defineEmits(['update:modelValue'])
 
@@ -128,7 +129,14 @@ const uploadImage = async (file: File, pos?: number) => {
 
 const deleteImage = () => {
     if (editor.value) {
-        editor.value.chain().focus().deleteSelection().run()
+        const { state } = editor.value
+        const { selection } = state
+        const node = state.doc.nodeAt(selection.from)
+        if (node && node.type.name === 'image') {
+            editor.value.chain().focus().deleteRange({ from: selection.from, to: selection.from + node.nodeSize }).run()
+        } else {
+            editor.value.chain().focus().deleteSelection().run()
+        }
     }
 }
 
@@ -142,13 +150,15 @@ const editor = useEditor({
   content: props.modelValue,
   extensions: [
     StarterKit,
-    Image,
-    BubbleMenuExtension,
+    Image.configure({
+      inline: false,
+      allowBase64: true,
+    }),
     Placeholder.configure({
-      placeholder: "Type something... (Type '/' to see commands if implemented, or drag & drop images)",
+      placeholder: "Type something... (or drag & drop images)",
     }),
   ],
-  editable: props.editable !== false,
+  editable: props.editable,
   onUpdate: ({ editor }) => {
     emit('update:modelValue', editor.getHTML())
   },
@@ -198,6 +208,11 @@ const editor = useEditor({
           }
       }
   }
+})
+
+// Keep editable state in sync with prop
+watch(() => props.editable, (value) => {
+  editor.value?.setEditable(!!value)
 })
 
 // Watch for external content changes

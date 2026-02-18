@@ -12,13 +12,25 @@
 
 <script setup lang="ts">
 const pagesStore = usePagesStore()
+const auth = useAuthStore()
+
+const fetchPagesForWorkspace = () => {
+  const wsId = auth.activeWorkspaceId
+  pagesStore.fetchPages(wsId || undefined)
+}
 
 onMounted(() => {
-  pagesStore.fetchPages()
+  fetchPagesForWorkspace()
+})
+
+// Re-fetch when active workspace changes
+watch(() => auth.activeWorkspaceId, () => {
+  fetchPagesForWorkspace()
 })
 
 const createRootPage = async () => {
-  const page = await pagesStore.createPage('Untitled')
+  const wsId = auth.activeWorkspaceId
+  const page = await pagesStore.createPage('Untitled', undefined, wsId || undefined)
   navigateTo(`/pages/${page.id}`)
 }
 </script>

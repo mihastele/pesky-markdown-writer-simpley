@@ -6,7 +6,32 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
     }
 
-    // Get user's workspace (assuming single workspace for now)
+    const query = getQuery(event)
+    const workspaceId = query.workspaceId as string | undefined
+
+    // If a specific workspace is requested, verify membership
+    if (workspaceId) {
+        const member = await prisma.workspaceMember.findFirst({
+            where: { userId: user.id, workspaceId }
+        })
+        if (!member) {
+            throw createError({ statusCode: 403, statusMessage: 'Not a member of this workspace' })
+        }
+
+        const pages = await prisma.page.findMany({
+            where: { workspaceId },
+            select: {
+                id: true,
+                title: true,
+                parentId: true,
+                updatedAt: true
+            },
+            orderBy: { updatedAt: 'desc' }
+        })
+        return pages
+    }
+
+    // Default: get pages from user's first workspace membership
     const member = await prisma.workspaceMember.findFirst({
         where: { userId: user.id },
         include: { workspace: true }
@@ -15,13 +40,6 @@ export default defineEventHandler(async (event) => {
     if (!member) {
         return []
     }
-
-    // Fetch all pages for the workspace
-    // We will structure them on client side or we can use recursion query here?
-    // Prisma doesn't support recursive queries easily.
-    // Let's fetch all and build tree on client or fetch root pages and include children recursively?
-    // Recursive include is limited in Prisma. 
-    // Best approach: Fetch ALL pages for workspace (lightweight, just id, title, parentId) and build tree on client.
 
     const pages = await prisma.page.findMany({
         where: {

@@ -29,10 +29,11 @@ export const usePagesStore = defineStore('pages', {
         }
     },
     actions: {
-        async fetchPages() {
+        async fetchPages(workspaceId?: string) {
             this.loading = true
             try {
-                const pages = await $fetch<Page[]>('/api/pages')
+                const query = workspaceId ? `?workspaceId=${workspaceId}` : ''
+                const pages = await $fetch<Page[]>(`/api/pages${query}`)
                 this.pages = pages
             } catch (e) {
                 console.error('Failed to fetch pages', e)
@@ -40,10 +41,10 @@ export const usePagesStore = defineStore('pages', {
                 this.loading = false
             }
         },
-        async createPage(title: string, parentId?: string) {
+        async createPage(title: string, parentId?: string, workspaceId?: string) {
             const page = await $fetch<Page>('/api/pages', {
                 method: 'POST',
-                body: { title, parentId }
+                body: { title, parentId, workspaceId }
             })
             this.pages.push(page)
             return page
