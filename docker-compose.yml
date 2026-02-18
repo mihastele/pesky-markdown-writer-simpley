@@ -1,15 +1,12 @@
 services:
   app:
     build: .
-    command: >-
-      sh -c "npx prisma db push && node .output/server/index.mjs"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-file:./data/dev.db}
+      - DATABASE_URL=${DATABASE_URL:-file:./dev.db}
       - JWT_SECRET=${JWT_SECRET:-changethis}
       - DISABLE_EMAIL_CONFIRMATION=${DISABLE_EMAIL_CONFIRMATION:-true}
     volumes:
       - ./prisma:/app/prisma
-      - sqlite_data:/app/data
     restart: always
 
   nginx:
@@ -34,6 +31,3 @@ services:
     depends_on:
       - app
     restart: always
-
-volumes:
-  sqlite_data:
