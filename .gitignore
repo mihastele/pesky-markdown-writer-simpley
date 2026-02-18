@@ -25,6 +25,7 @@ logs
 
 /app/generated/prisma
 certs/server.key
+certs/server.crt
 
 # Uploads
 /public/uploads
