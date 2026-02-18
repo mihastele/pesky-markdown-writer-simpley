@@ -28,3 +28,4 @@ certs/server.key
 
 # Uploads
 /public/uploads
+prisma/dev.db
