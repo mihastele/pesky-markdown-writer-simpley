@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 # Copy build output and necessary files
 COPY --from=build-stage /app/.output ./.output
-COPY --from=build-stage /app/prisma ./prisma
+COPY --from=build-stage /app/data ./prisma
 COPY --from=build-stage /app/package.json ./package.json
 
 # Environment variables
