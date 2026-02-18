@@ -87,13 +87,35 @@ You need to provide SSL certificates in the `certs/` directory before starting t
 
 #### Option 1: Generate Self-Signed Certificates (for Development)
 
-If you don't have purchased keys, you can generate self-signed ones using OpenSSL:
+If you don't have purchased keys, you can generate self-signed ones. Choose the command based on your operating system:
 
+**Linux / macOS / WSL:**
 ```bash
-mkdir certs
+mkdir -p certs
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout certs/server.key \
   -out certs/server.crt \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
+```
+
+**Windows (Git Bash):**
+> [!NOTE]
+> Git Bash may try to convert the subject path. Use a double slash `//` at the start of the subject or set `MSYS_NO_PATHCONV=1`.
+
+```bash
+mkdir -p certs
+MSYS_NO_PATHCONV=1 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout certs/server.key \
+  -out certs/server.crt \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
+```
+
+**Windows (PowerShell):**
+```powershell
+if (!(Test-Path certs)) { New-Item -ItemType Directory -Path certs }
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 `
+  -keyout certs/server.key `
+  -out certs/server.crt `
   -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
 ```
 
@@ -128,6 +150,7 @@ If you have purchased certificates (e.g., from Namecheap, DigiCert, etc.):
 
 - **Logs**: View logs with `docker compose logs -f`.
 - **Permissions**: Ensure the `certs/` directory and files have appropriate read permissions for the Nginx container.
+- **Docker Engine Error**: If you see `unable to get image ... error during connect`, ensure **Docker Desktop is running** and your user has permissions to access the Docker pipe/socket. In Windows, this usually means Docker Desktop is closed.
 
 ---
 
