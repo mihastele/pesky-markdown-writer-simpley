@@ -155,3 +155,14 @@ If you have purchased certificates (e.g., from Namecheap, DigiCert, etc.):
 ---
 
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+
+
+Steps to fix main.User does not exist in the current database:
+
+    DATABASE_URL="file:./dev.db"
+    JWT_SECRET="changethis"
+    npx prisma db push
+    npx prisma generate
+    npm run dev
+
+Feedback submitted

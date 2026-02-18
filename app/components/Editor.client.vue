@@ -45,7 +45,7 @@
           </div>
         </BubbleMenu>
 
-        <editor-content :editor="editor" class="prose prose-emerald max-w-none focus:outline-none" />
+        <EditorContent :editor="editor" class="prose prose-emerald max-w-none focus:outline-none" />
         <div v-if="isDragging" class="absolute inset-0 bg-blue-50/50 border-2 border-dashed border-blue-400 rounded-lg pointer-events-none flex items-center justify-center">
             <span class="text-blue-500 font-medium bg-white px-4 py-2 rounded shadow-sm">Drop image to upload</span>
         </div>
@@ -73,10 +73,12 @@ import Image from '@tiptap/extension-image'
 import { Bold, Italic, Strikethrough, Heading1, Heading2, List, Image as ImageIcon, Trash2 } from 'lucide-vue-next'
 import { ref, watch, onBeforeUnmount } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: string
   editable?: boolean
-}>()
+}>(), {
+  editable: true,
+})
 
 const emit = defineEmits(['update:modelValue'])
 
@@ -156,7 +158,7 @@ const editor = useEditor({
       placeholder: "Type something... (or drag & drop images)",
     }),
   ],
-  editable: props.editable !== false,
+  editable: props.editable,
   onUpdate: ({ editor }) => {
     emit('update:modelValue', editor.getHTML())
   },
@@ -206,6 +208,11 @@ const editor = useEditor({
           }
       }
   }
+})
+
+// Keep editable state in sync with prop
+watch(() => props.editable, (value) => {
+  editor.value?.setEditable(!!value)
 })
 
 // Watch for external content changes
