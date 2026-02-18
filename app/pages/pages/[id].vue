@@ -2,16 +2,23 @@
   <div class="h-full flex flex-col">
     <div v-if="page" class="flex-1 overflow-y-auto">
       <!-- Title input -->
-      <div class="max-w-3xl mx-auto pt-8 px-4">
+      <div class="max-w-3xl mx-auto pt-8 px-4 flex justify-between items-center">
         <input 
           v-model="title" 
           @blur="updateTitle"
           class="w-full text-4xl font-bold border-none focus:ring-0 placeholder-gray-300 px-0 bg-transparent" 
           placeholder="Untitled"
         />
+        <div class="text-sm text-gray-400 whitespace-nowrap ml-4">
+             <span v-if="saving">Saving...</span>
+             <span v-else-if="saveError" class="text-red-500">Error saving!</span>
+             <span v-else>Saved</span>
+        </div>
       </div>
       
-      <Editor v-model="content" @update:modelValue="onContentChange" />
+      <ClientOnly>
+        <Editor v-model="content" @update:modelValue="onContentChange" />
+      </ClientOnly>
     </div>
     <div v-else-if="loading" class="flex items-center justify-center h-full text-gray-400">
       Loading...
@@ -48,9 +55,21 @@ const fetchPage = async () => {
 
 watch(pageId, fetchPage, { immediate: true })
 
+const saving = ref(false)
+const saveError = ref(false)
+
 const updatePage = async (updates: any) => {
   if (!page.value) return
-  await pagesStore.updatePage(pageId.value, updates)
+  saving.value = true
+  saveError.value = false
+  try {
+      await pagesStore.updatePage(pageId.value, updates)
+  } catch (e) {
+      saveError.value = true
+      console.error(e)
+  } finally {
+      saving.value = false
+  }
 }
 
 const updateTitle = () => {

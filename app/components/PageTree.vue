@@ -24,12 +24,9 @@
         </NuxtLink>
 
         <!-- Actions -->
-        <div class="hidden group-hover:flex items-center space-x-1 absolute right-1 bg-gray-100 pl-1">
-          <button @click.stop="createChild(page.id)" class="p-0.5 hover:bg-gray-200 rounded text-gray-500" title="Add sub-page">
-            <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          </button>
-          <button @click.stop="deletePage(page.id)" class="p-0.5 hover:bg-gray-200 rounded text-gray-500" title="Delete">
-            <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        <div class="hidden group-hover:flex items-center absolute right-1 bg-gray-100 pl-1 rounded">
+          <button @click.stop="openMenu($event, page.id)" class="p-0.5 hover:bg-gray-200 rounded text-gray-500" title="Options">
+             <MoreHorizontal class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -40,12 +37,32 @@
       </div>
     </li>
     
-    <!-- Add new page button if at root and list is provided (hacky check for root) -->
-    <!-- Ideally we pass a prop 'isRoot' -->
+    <!-- Menu Portal -->
+    <Teleport to="body">
+      <div v-if="activeMenuId" class="fixed inset-0 z-40" @click="closeMenu"></div>
+      <div 
+        v-if="activeMenuId" 
+        class="fixed z-50 bg-white rounded-md shadow-lg border border-gray-200 py-1 w-40"
+        :style="{ top: `${menuY}px`, left: `${menuX}px` }"
+      >
+         <button @click="renamePage(activeMenuId)" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+            <Edit class="w-3 h-3 mr-2" /> Rename
+         </button>
+         <button @click="createChild(activeMenuId)" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+            <FilePlus class="w-3 h-3 mr-2" /> Add sub-page
+         </button>
+         <div class="border-t border-gray-100 my-1"></div>
+         <button @click="deletePage(activeMenuId)" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
+            <Trash2 class="w-3 h-3 mr-2" /> Delete
+         </button>
+      </div>
+    </Teleport>
   </ul>
 </template>
 
 <script setup lang="ts">
+import { MoreHorizontal, FilePlus, Trash2, Edit } from 'lucide-vue-next'
+
 const props = defineProps<{
   pages: any[]
 }>()
@@ -53,6 +70,10 @@ const props = defineProps<{
 const route = useRoute()
 const pagesStore = usePagesStore()
 const expanded = ref<Set<string>>(new Set())
+
+const activeMenuId = ref<string | null>(null)
+const menuX = ref(0)
+const menuY = ref(0)
 
 const isExpanded = (id: string) => expanded.value.has(id)
 const toggleExpand = (id: string) => {
@@ -65,12 +86,32 @@ const toggleExpand = (id: string) => {
 
 const isActive = (id: string) => route.params.id === id
 
-const createChild = async (parentId: string) => {
+const openMenu = (event: MouseEvent, id: string) => {
+    activeMenuId.value = id
+    // Position menu
+    const target = event.currentTarget as HTMLElement
+    const rect = target.getBoundingClientRect()
+    menuX.value = rect.right + 5
+    if (menuX.value + 160 > window.innerWidth) {
+        menuX.value = rect.left - 165
+    }
+    menuY.value = rect.top
+}
+
+const closeMenu = () => {
+    activeMenuId.value = null
+}
+
+const createChild = async (parentId: string | null) => {
+  closeMenu()
+  if (!parentId) return // Should not happen in context menu logic here
   await pagesStore.createPage('Untitled', parentId)
   expanded.value.add(parentId)
 }
 
-const deletePage = async (id: string) => {
+const deletePage = async (id: string | null) => {
+  closeMenu()
+  if (!id) return
   if (confirm('Are you sure you want to delete this page?')) {
     await pagesStore.deletePage(id)
     if (isActive(id)) {
@@ -79,10 +120,18 @@ const deletePage = async (id: string) => {
   }
 }
 
-// Auto expand parent of active page
-// This requires knowing the path up. Simple implementation: expand all or traverse.
-// Since we have flat list in store, we can find parents.
-// For now, let's keep it simple.
+const renamePage = async (id: string | null) => {
+    closeMenu()
+    if (!id) return
+    const page = props.pages.find(p => p.id === id) || { title: '' } // This might fail if deep nested, need store lookup?
+    // Actually we can just find it in store pages list
+    const currentTitle = pagesStore.pages.find(p => p.id === id)?.title || ''
+    
+    const newTitle = prompt('Enter new page title', currentTitle)
+    if (newTitle !== null && newTitle !== currentTitle) {
+        await pagesStore.updatePage(id, { title: newTitle })
+    }
+}
 </script>
 
 <script lang="ts">

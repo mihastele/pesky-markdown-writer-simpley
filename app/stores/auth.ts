@@ -2,7 +2,13 @@ import { defineStore } from 'pinia'
 
 export const useAuthStore = defineStore('auth', {
     state: () => ({
-        user: null as null | { id: string; email: string; name: string },
+        user: null as null | {
+            id: string;
+            email: string;
+            name: string | null;
+            ownedWorkspaces: { id: string; name: string }[];
+            workspaces: { id: string; name: string }[];
+        },
         loading: false
     }),
     actions: {
@@ -18,19 +24,19 @@ export const useAuthStore = defineStore('auth', {
             }
         },
         async login(password: string, email: string) {
-            const { user } = await $fetch('/api/auth/login', {
+            await $fetch('/api/auth/login', {
                 method: 'POST',
                 body: { email, password }
             })
-            this.user = user
+            await this.fetchUser()
             navigateTo('/')
         },
         async register(name: string, email: string, password: string) {
-            const { user } = await $fetch('/api/auth/register', {
+            await $fetch('/api/auth/register', {
                 method: 'POST',
                 body: { name, email, password }
             })
-            this.user = user
+            await this.fetchUser()
             navigateTo('/')
         },
         async logout() {

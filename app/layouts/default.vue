@@ -3,8 +3,13 @@
     <!-- Sidebar -->
     <aside class="w-64 bg-gray-50 border-r border-gray-200 flex flex-col transition-all duration-300" :class="{ '-ml-64': !sidebarOpen }">
       <div class="h-14 flex items-center px-4 border-b border-gray-200 justify-between">
-        <span class="font-semibold text-gray-700 truncate" v-if="auth.user">{{ auth.user.name }}'s Workspace</span>
-        <span class="font-semibold text-gray-700" v-else>Pesky Writer</span>
+        <div class="flex items-center min-w-0">
+          <span class="font-semibold text-gray-700 truncate" v-if="auth.user">{{ auth.user.name }}'s Workspace</span>
+          <span class="font-semibold text-gray-700" v-else>Pesky Writer</span>
+        </div>
+        <button v-if="isOwner" @click="showInviteDialog = true" class="text-gray-500 hover:text-emerald-600 p-1 rounded hover:bg-gray-100" title="Invite Member">
+           <UserPlusIcon class="w-4 h-4" />
+        </button>
       </div>
       
       <div class="flex-1 overflow-y-auto p-2">
@@ -55,12 +60,25 @@
         <slot />
       </div>
     </main>
+
+    
+    <InviteMemberDialog 
+      v-if="auth.user && isOwner"
+      v-model="showInviteDialog" 
+      :workspace-id="auth.user.ownedWorkspaces[0]?.id"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { UserPlus as UserPlusIcon } from 'lucide-vue-next'
 const auth = useAuthStore()
 const sidebarOpen = ref(true)
+const showInviteDialog = ref(false)
+
+const isOwner = computed(() => {
+    return auth.user?.ownedWorkspaces && auth.user.ownedWorkspaces.length > 0
+})
 
 onMounted(async () => {
   if (!auth.user) {
