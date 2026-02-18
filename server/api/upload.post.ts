@@ -1,4 +1,4 @@
-import { writeFile } from 'fs/promises'
+import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 
@@ -13,13 +13,24 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, statusMessage: 'No file uploaded' })
     }
 
+    const config = useRuntimeConfig()
+    const storageType = config.storageType || 'local'
+
+    if (storageType !== 'local') {
+        throw createError({ statusCode: 501, statusMessage: 'Storage type not implemented: ' + storageType })
+    }
+
     const uploadedFiles = []
+
+    // Ensure uploads directory exists
+    const uploadDir = join(process.cwd(), 'public', 'uploads')
+    await mkdir(uploadDir, { recursive: true })
 
     for (const file of files) {
         if (file.name === 'file' && file.filename) {
             const ext = file.filename.split('.').pop()
             const filename = `${randomUUID()}.${ext}`
-            const path = join(process.cwd(), 'public', 'uploads', filename)
+            const path = join(uploadDir, filename)
 
             await writeFile(path, file.data)
             uploadedFiles.push(`/uploads/${filename}`)
