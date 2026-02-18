@@ -6,7 +6,20 @@ services:
       - JWT_SECRET=${JWT_SECRET:-changethis}
       - DISABLE_EMAIL_CONFIRMATION=${DISABLE_EMAIL_CONFIRMATION:-true}
     volumes:
-      - ./prisma:/app/prisma
+      - .:/app
+      - /app/node_modules
+    restart: always
+
+  collaboration:
+    build: .
+    command: npm run start:collab
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-file:./dev.db}
+    ports:
+      - "1234:1234"
+    volumes:
+      - .:/app
+      - /app/node_modules
     restart: always
 
   nginx:
@@ -27,4 +40,5 @@ services:
       - ./certs:/etc/nginx/certs
     depends_on:
       - app
+      - collaboration
     restart: always

@@ -34,3 +34,6 @@ data/dev.db
 .gitignore
 data/dev.db-wal
 data/dev.db-shm
+dev.db
+dev.db-shm
+dev.db-wal

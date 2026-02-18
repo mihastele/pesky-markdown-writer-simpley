@@ -3,13 +3,16 @@ import { randomUUID } from 'crypto'
 import path from 'path'
 
 // Resolve database path from env or default
-const dbPath = process.env.DATABASE_URL || './data/dev.db'
+let dbPath = process.env.DATABASE_URL || './dev.db'
+if (dbPath.startsWith('file:')) {
+  dbPath = dbPath.slice(5)
+}
 
 // Ensure directory exists
 import fs from 'fs'
 const dbDir = path.dirname(dbPath)
 if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true })
+  fs.mkdirSync(dbDir, { recursive: true })
 }
 
 const db = new Database(dbPath)
