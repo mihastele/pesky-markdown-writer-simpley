@@ -30,3 +30,7 @@ certs/server.crt
 # Uploads
 /public/uploads
 prisma/dev.db
+data/dev.db
+.gitignore
+data/dev.db-wal
+data/dev.db-shm
