@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import { db } from '../../utils/db'
 
 const SECRET = process.env.JWT_SECRET || 'changethis'
 
@@ -14,9 +15,7 @@ export default defineEventHandler(async (event) => {
         })
     }
 
-    const user = await prisma.user.findUnique({
-        where: { email },
-    })
+    const user = db.prepare('SELECT * FROM User WHERE email = ?').get(email) as any
 
     if (!user) {
         throw createError({

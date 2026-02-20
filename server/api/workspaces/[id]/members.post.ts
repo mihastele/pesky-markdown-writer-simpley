@@ -1,7 +1,4 @@
-// Removed direct PrismaClient import to use singleton
-// import { PrismaClient } from '@prisma/client'
-// const prisma = new PrismaClient()
-import { prisma } from '../../../utils/prisma'
+import { db, randomUUID } from '../../../utils/db'
 
 export default defineEventHandler(async (event) => {
     const user = event.context.user
@@ -18,50 +15,38 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if user exists
-    const userToAdd = await prisma.user.findUnique({
-        where: { email }
-    })
+    const userToAdd = db.prepare('SELECT id FROM User WHERE email = ?').get(email) as any
 
     if (!userToAdd) {
         throw createError({ statusCode: 404, statusMessage: 'User not found' })
     }
 
     // Check if workspace exists and current user is owner
-    // For now, allow owners to add members.
-    const workspace = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        include: { members: true }
-    })
+    const workspace = db.prepare('SELECT * FROM Workspace WHERE id = ?').get(workspaceId) as any
 
     if (!workspace) {
         throw createError({ statusCode: 404, statusMessage: 'Workspace not found' })
     }
 
     if (workspace.ownerId !== user.id) {
-        // Maybe allow members to add others? Strict owner for now.
         throw createError({ statusCode: 403, statusMessage: 'Only workspace owner can add members' })
     }
 
     // Check if already a member
-    const isMember = await prisma.workspaceMember.findFirst({
-        where: {
-            workspaceId,
-            userId: userToAdd.id
-        }
-    })
+    const isMember = db.prepare(
+        'SELECT id FROM WorkspaceMember WHERE workspaceId = ? AND userId = ?'
+    ).get(workspaceId, userToAdd.id)
 
     if (isMember) {
         return { message: 'User is already a member' }
     }
 
     // Add member
-    await prisma.workspaceMember.create({
-        data: {
-            workspaceId,
-            userId: userToAdd.id,
-            role: 'MEMBER'
-        }
-    })
+    const memberId = randomUUID()
+    const now = new Date().toISOString()
+    db.prepare(
+        'INSERT INTO WorkspaceMember (id, userId, workspaceId, role, createdAt) VALUES (?, ?, ?, ?, ?)'
+    ).run(memberId, userToAdd.id, workspaceId, 'MEMBER', now)
 
     return { message: 'User added to workspace' }
 })

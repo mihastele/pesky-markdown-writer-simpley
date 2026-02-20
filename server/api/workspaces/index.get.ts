@@ -1,4 +1,4 @@
-import { prisma } from '../../utils/prisma'
+import { db } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
     const user = event.context.user
@@ -6,29 +6,29 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
     }
 
-    // Get all workspaces the user is a member of (including owned)
-    const memberships = await prisma.workspaceMember.findMany({
-        where: { userId: user.id },
-        include: {
-            workspace: {
-                include: {
-                    owner: {
-                        select: { id: true, name: true, email: true }
-                    },
-                    _count: {
-                        select: { members: true, pages: true }
-                    }
-                }
-            }
-        }
-    })
+    // Get all workspaces the user is a member of, with owner info and counts
+    const workspaces = db.prepare(`
+        SELECT
+            w.id,
+            w.name,
+            wm.role,
+            u.id as ownerId,
+            u.name as ownerName,
+            u.email as ownerEmail,
+            (SELECT COUNT(*) FROM WorkspaceMember wm2 WHERE wm2.workspaceId = w.id) as memberCount,
+            (SELECT COUNT(*) FROM Page p WHERE p.workspaceId = w.id) as pageCount
+        FROM WorkspaceMember wm
+        INNER JOIN Workspace w ON w.id = wm.workspaceId
+        INNER JOIN User u ON u.id = w.ownerId
+        WHERE wm.userId = ?
+    `).all(user.id) as any[]
 
-    return memberships.map(m => ({
-        id: m.workspace.id,
-        name: m.workspace.name,
-        role: m.role,
-        owner: m.workspace.owner,
-        memberCount: m.workspace._count.members,
-        pageCount: m.workspace._count.pages,
+    return workspaces.map(w => ({
+        id: w.id,
+        name: w.name,
+        role: w.role,
+        owner: { id: w.ownerId, name: w.ownerName, email: w.ownerEmail },
+        memberCount: w.memberCount,
+        pageCount: w.pageCount,
     }))
 })

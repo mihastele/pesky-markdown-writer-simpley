@@ -1,4 +1,4 @@
-
+import { db } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
     const user = event.context.user
@@ -11,50 +11,33 @@ export default defineEventHandler(async (event) => {
 
     // If a specific workspace is requested, verify membership
     if (workspaceId) {
-        const member = await prisma.workspaceMember.findFirst({
-            where: { userId: user.id, workspaceId }
-        })
+        const member = db.prepare(
+            'SELECT id FROM WorkspaceMember WHERE userId = ? AND workspaceId = ?'
+        ).get(user.id, workspaceId)
+
         if (!member) {
             throw createError({ statusCode: 403, statusMessage: 'Not a member of this workspace' })
         }
 
-        const pages = await prisma.page.findMany({
-            where: { workspaceId },
-            select: {
-                id: true,
-                title: true,
-                parentId: true,
-                updatedAt: true
-            },
-            orderBy: { updatedAt: 'desc' }
-        })
+        const pages = db.prepare(
+            'SELECT id, title, parentId, updatedAt FROM Page WHERE workspaceId = ? ORDER BY updatedAt DESC'
+        ).all(workspaceId)
+
         return pages
     }
 
     // Default: get pages from user's first workspace membership
-    const member = await prisma.workspaceMember.findFirst({
-        where: { userId: user.id },
-        include: { workspace: true }
-    })
+    const member = db.prepare(
+        'SELECT workspaceId FROM WorkspaceMember WHERE userId = ? LIMIT 1'
+    ).get(user.id) as any
 
     if (!member) {
         return []
     }
 
-    const pages = await prisma.page.findMany({
-        where: {
-            workspaceId: member.workspaceId
-        },
-        select: {
-            id: true,
-            title: true,
-            parentId: true,
-            updatedAt: true
-        },
-        orderBy: {
-            updatedAt: 'desc'
-        }
-    })
+    const pages = db.prepare(
+        'SELECT id, title, parentId, updatedAt FROM Page WHERE workspaceId = ? ORDER BY updatedAt DESC'
+    ).all(member.workspaceId)
 
     return pages
 })

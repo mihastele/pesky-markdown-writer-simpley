@@ -1,4 +1,4 @@
-
+import { db } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
     const user = event.context.user
@@ -10,35 +10,29 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     const { title, content } = body
 
-    // We should verify ownership first, but simpler:
-    // Find page first
-    const existingPage = await prisma.page.findUnique({
-        where: { id }
-    })
+    const existingPage = db.prepare('SELECT * FROM Page WHERE id = ?').get(id) as any
 
     if (!existingPage) {
         throw createError({ statusCode: 404, statusMessage: 'Page not found' })
     }
 
-    const member = await prisma.workspaceMember.findFirst({
-        where: {
-            userId: user.id,
-            workspaceId: existingPage.workspaceId
-        }
-    })
+    const member = db.prepare(
+        'SELECT id FROM WorkspaceMember WHERE userId = ? AND workspaceId = ?'
+    ).get(user.id, existingPage.workspaceId)
 
     if (!member) {
         throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
     }
 
-    const page = await prisma.page.update({
-        where: { id },
-        data: {
-            title,
-            content,
-            updatedAt: new Date()
-        }
-    })
+    const now = new Date().toISOString()
+    db.prepare(
+        'UPDATE Page SET title = ?, content = ?, updatedAt = ? WHERE id = ?'
+    ).run(title, content, now, id)
 
-    return page
+    return {
+        ...existingPage,
+        title,
+        content,
+        updatedAt: now,
+    }
 })
