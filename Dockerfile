@@ -27,9 +27,18 @@ WORKDIR /app
 # Install openssl for Prisma runtime
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
+RUN npm install -g tsx
+
 # Copy build output and necessary files
 COPY --from=build-stage /app/.output ./.output
 COPY --from=build-stage /app/package.json ./package.json
+COPY --from=build-stage /app/package-lock.json ./package-lock.json
+COPY --from=build-stage /app/server ./server
+COPY --from=build-stage /app/node_modules ./node_modules
+
+# Rebuild native modules for the target architecture
+RUN npm rebuild better-sqlite3 && \
+    cd .output/server && npm rebuild better-sqlite3
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data

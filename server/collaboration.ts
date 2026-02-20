@@ -1,6 +1,6 @@
 import { Server } from '@hocuspocus/server'
 
-const server = Server.configure({
+const server = new Server({
     port: 1234,
     async onConnect(data) {
         console.log(`New connection: ${data.documentName}`)

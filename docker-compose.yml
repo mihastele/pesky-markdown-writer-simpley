@@ -5,9 +5,9 @@ services:
       - DATABASE_URL=${DATABASE_URL:-file:./dev.db}
       - JWT_SECRET=${JWT_SECRET:-changethis}
       - DISABLE_EMAIL_CONFIRMATION=${DISABLE_EMAIL_CONFIRMATION:-true}
-    volumes:
-      - .:/app
-      - /app/node_modules
+    # volumes:
+    #   - .:/app
+    #   - /app/node_modules
     restart: always
 
   collaboration:
@@ -17,9 +17,9 @@ services:
       - DATABASE_URL=${DATABASE_URL:-file:./dev.db}
     ports:
       - "1234:1234"
-    volumes:
-      - .:/app
-      - /app/node_modules
+    # volumes:
+    #   - .:/app
+    #   - /app/node_modules
     restart: always
 
   nginx:
