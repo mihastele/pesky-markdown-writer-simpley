@@ -27,12 +27,12 @@ export default defineEventHandler(async (event) => {
     const now = new Date().toISOString()
     db.prepare(
         'UPDATE Page SET title = ?, content = ?, updatedAt = ? WHERE id = ?'
-    ).run(title, content, now, id)
+    ).run(title || "Untitled", content, now, id)
 
     return {
         ...existingPage,
-        title,
-        content,
+        title: title || "Untitled",
+        content: content || "",
         updatedAt: now,
     }
 })
