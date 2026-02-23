@@ -22,8 +22,11 @@ export default defineEventHandler(async (event) => {
 
     const uploadedFiles = []
 
-    // Ensure uploads directory exists
-    const uploadDir = join(process.cwd(), 'public', 'uploads')
+    // Ensure uploads directory exists.
+    // In production Nitro serves static files from .output/public/, not public/.
+    const uploadDir = process.env.NODE_ENV === 'production'
+        ? join(process.cwd(), '.output', 'public', 'uploads')
+        : join(process.cwd(), 'public', 'uploads')
     await mkdir(uploadDir, { recursive: true })
 
     for (const file of files) {
