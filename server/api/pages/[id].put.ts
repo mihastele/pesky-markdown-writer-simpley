@@ -25,14 +25,19 @@ export default defineEventHandler(async (event) => {
     }
 
     const now = new Date().toISOString()
+    // Use existing values as fallbacks so a partial update (e.g. title-only)
+    // never overwrites fields that weren't included in the request body.
+    const newTitle = title !== undefined ? title : existingPage.title
+    const newContent = content !== undefined ? content : existingPage.content
+
     db.prepare(
         'UPDATE Page SET title = ?, content = ?, updatedAt = ? WHERE id = ?'
-    ).run(title || "Untitled", content, now, id)
+    ).run(newTitle || "Untitled", newContent, now, id)
 
     return {
         ...existingPage,
-        title: title || "Untitled",
-        content: content || "",
+        title: newTitle || "Untitled",
+        content: newContent || "",
         updatedAt: now,
     }
 })

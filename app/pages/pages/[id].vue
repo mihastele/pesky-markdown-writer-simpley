@@ -23,6 +23,7 @@
       
       <ClientOnly>
         <Editor 
+            :key="pageId"
             v-model="content" 
             :page-id="pageId"
             :user="currentUser"

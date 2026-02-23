@@ -99,8 +99,15 @@ const ydoc = new Y.Doc()
 let provider: HocuspocusProvider | null = null
 
 if (props.pageId && props.user) {
+    // Use wss:// when served over HTTPS so the browser doesn't block the
+    // connection as mixed content.  In that case nginx proxies /ws/ to the
+    // collaboration container.  On plain HTTP (local dev) connect directly.
+    const collabUrl = window.location.protocol === 'https:'
+        ? `wss://${window.location.host}/ws/`
+        : `ws://${window.location.hostname}:1234`
+
     provider = new HocuspocusProvider({
-        url: 'ws://localhost:1234',
+        url: collabUrl,
         name: `page.${props.pageId}`,
         document: ydoc,
         onStatus: (event) => {
