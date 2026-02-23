@@ -16,6 +16,7 @@ if (!fs.existsSync(dbDir)) {
 }
 
 const db = new Database(dbPath)
+console.log(`[db] Opened database at: ${path.resolve(dbPath)}`)
 
 // Enable WAL mode for better concurrent performance
 db.pragma('journal_mode = WAL')
