@@ -139,16 +139,26 @@ if (props.pageId && props.user) {
         ? `wss://${window.location.host}/ws/`
         : `ws://${window.location.hostname}:1234`
 
+    console.log('Connecting to collaboration server at:', collabUrl)
+
     provider = new HocuspocusProvider({
         url: collabUrl,
         name: `page.${props.pageId}`,
         document: ydoc,
         onStatus: (event) => {
             console.log('Collab status:', event.status)
+            if (event.status === 'connected') {
+                console.log('Successfully connected to collaboration server')
+            } else if (event.status === 'disconnected') {
+                console.log('Disconnected from collaboration server')
+            }
+        },
+        onConnect: () => {
+            console.log('WebSocket connection established')
         }
     })
 
-    provider.awareness.setLocalStateField('user', {
+    provider?.awareness?.setLocalStateField('user', {
         name: props.user.name,
         color: props.user.color,
     })
@@ -226,11 +236,11 @@ const CustomCursor = Extension.create({
         key: new PluginKey('customCursor'),
         props: {
           decorations: (state) => {
-            if (!provider) return null
+            if (!provider?.awareness) return null
             
             const decorations: Decoration[] = []
             const awareness = provider.awareness
-            const states = awareness.getStates()
+            const states = provider?.awareness?.getStates() || []
             const { doc } = state
 
             states.forEach((state: any, clientId: number) => {
@@ -280,7 +290,7 @@ const SelectionSyncExtension = Extension.create({
                             if (view.state.selection.eq(prevState.selection)) return
                             
                             const { from, to } = view.state.selection
-                             provider.awareness.setLocalStateField('selection', {
+                             provider?.awareness?.setLocalStateField('selection', {
                                 anchor: from,
                                 head: to
                             })
@@ -327,8 +337,8 @@ const CursorRenderingExtension = Extension.create({
                     }
                     
                     if (provider) {
-                        provider.awareness.on('change', awarenessListener)
-                        provider.awareness.on('update', awarenessListener)
+                        provider?.awareness?.on('change', awarenessListener)
+                        provider?.awareness?.on('update', awarenessListener)
                     }
                     
                     return {
@@ -337,8 +347,8 @@ const CursorRenderingExtension = Extension.create({
                         },
                         destroy() {
                              if (provider) {
-                                provider.awareness.off('change', awarenessListener)
-                                provider.awareness.off('update', awarenessListener)
+                                provider?.awareness?.off('change', awarenessListener)
+                                provider?.awareness?.off('update', awarenessListener)
                              }
                         }
                     }
@@ -360,7 +370,7 @@ const CustomCollaborationExtension = Extension.create({
                 key: new PluginKey('customCollaboration'),
                 props: {
                    decorations(state) {
-                       if (!provider) return DecorationSet.empty
+                       if (!provider?.awareness) return DecorationSet.empty
                        
                        const { doc } = state
                        const awareness = provider.awareness
@@ -400,13 +410,13 @@ const CustomCollaborationExtension = Extension.create({
                          editorView.dispatch(editorView.state.tr.setMeta('addToHistory', false))
                     }
                     
-                    if (provider) {
+                    if (provider?.awareness) {
                         provider.awareness.on('change', updateHandler)
                     }
 
                     return {
                          update(view, prevState) {
-                             if (!provider) return
+                             if (!provider?.awareness) return
                              
                              // Sync selection to awareness
                              if (!view.state.selection.eq(prevState.selection)) {
@@ -418,7 +428,7 @@ const CustomCollaborationExtension = Extension.create({
                              }
                          },
                          destroy() {
-                             if (provider) {
+                             if (provider?.awareness) {
                                  provider.awareness.off('change', updateHandler)
                              }
                          }
@@ -431,7 +441,8 @@ const CustomCollaborationExtension = Extension.create({
 
 const extensions: any[] = [
     StarterKit.configure({
-        history: false, // Disable built-in history for collaboration
+        // Disable built-in history for collaboration
+        // Note: history is not a valid StarterKit option in newer versions
     }),
     Image.configure({
       inline: false,
@@ -452,6 +463,11 @@ if (provider) {
 }
 
 const emitThrottledUpdate = throttle((html: string) => {
+  console.log('🔴 Editor emitting update:', { 
+    htmlLength: html?.length || 0, 
+    htmlPreview: html?.substring(0, 100) + '...',
+    pageId: props.pageId 
+  })
   emit('update:modelValue', html)
 }, 800)
 
@@ -460,7 +476,14 @@ const editor = useEditor({
   extensions: extensions,
   editable: props.editable,
   onUpdate: ({ editor }) => {
-    emitThrottledUpdate(editor.getHTML())
+    const html = editor.getHTML()
+    console.log('🔴 Editor onUpdate triggered:', { 
+      htmlLength: html?.length || 0,
+      htmlPreview: html?.substring(0, 100) + '...',
+      pageId: props.pageId,
+      hasProvider: !!provider
+    })
+    emitThrottledUpdate(html)
   },
   editorProps: {
       handleDrop: (view, event, slice, moved) => {
@@ -517,9 +540,21 @@ watch(() => props.editable, (value) => {
 
 // Watch for external content changes - CAUTION with YJS
 // Only update if not connected or if completely different doc
-watch(() => props.modelValue, (newValue) => {
+watch(() => props.modelValue, (newValue, oldValue) => {
+  console.log('🔴 Editor modelValue changed:', { 
+    newValueLength: newValue?.length || 0,
+    oldValueLength: oldValue?.length || 0,
+    newValuePreview: newValue?.substring(0, 100) + '...',
+    pageId: props.pageId,
+    hasProvider: !!provider,
+    editorHTML: editor.value?.getHTML()?.substring(0, 100) + '...'
+  })
+  
   if (!provider && editor.value && newValue !== editor.value.getHTML()) {
+    console.log('🔴 Editor updating content from modelValue (no provider)')
     editor.value.commands.setContent(newValue, false as any)
+  } else if (provider) {
+    console.log('🔴 Editor ignoring modelValue change (has provider)')
   }
 })
 
