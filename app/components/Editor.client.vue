@@ -90,6 +90,39 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits(['update:modelValue', 'provider'])
 
+// Minimal throttle to limit save frequency while typing
+const throttle = <T extends (...args: any[]) => void>(fn: T, wait: number) => {
+  let last = 0
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  let lastArgs: any[] | null = null
+
+  const invoke = (time: number, args: any[]) => {
+    last = time
+    fn(...args)
+  }
+
+  const throttled = (...args: any[]) => {
+    const now = Date.now()
+    const remaining = wait - (now - last)
+    lastArgs = args
+
+    if (remaining <= 0) {
+      if (timeout) {
+        clearTimeout(timeout)
+        timeout = null
+      }
+      invoke(now, args)
+    } else if (!timeout) {
+      timeout = setTimeout(() => {
+        timeout = null
+        invoke(Date.now(), lastArgs || [])
+      }, remaining)
+    }
+  }
+
+  return throttled as T
+}
+
 const fileInput = ref<HTMLInputElement | null>(null)
 const isUploading = ref(false)
 const isDragging = ref(false)
@@ -396,7 +429,7 @@ const CustomCollaborationExtension = Extension.create({
     }
 })
 
-const extensions = [
+const extensions: any[] = [
     StarterKit.configure({
         history: false, // Disable built-in history for collaboration
     }),
@@ -418,12 +451,16 @@ if (provider) {
     )
 }
 
+const emitThrottledUpdate = throttle((html: string) => {
+  emit('update:modelValue', html)
+}, 800)
+
 const editor = useEditor({
   content: props.modelValue, // Initial content might cause sync issues if not handled carefully, usually rely on Yjs doc
   extensions: extensions,
   editable: props.editable,
   onUpdate: ({ editor }) => {
-    emit('update:modelValue', editor.getHTML())
+    emitThrottledUpdate(editor.getHTML())
   },
   editorProps: {
       handleDrop: (view, event, slice, moved) => {
