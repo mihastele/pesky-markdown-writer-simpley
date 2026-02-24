@@ -25,14 +25,22 @@ export default defineEventHandler(async (event) => {
     }
 
     const now = new Date().toISOString()
+
+    // Build dynamic update - only update fields that were actually provided
+    // This prevents nullifying title when only content is sent, and vice versa
+    const updates: Record<string, any> = { updatedAt: now }
+    if (title !== undefined) updates.title = title
+    if (content !== undefined) updates.content = content
+
+    const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ')
+    const values = Object.values(updates)
+
     db.prepare(
-        'UPDATE Page SET title = ?, content = ?, updatedAt = ? WHERE id = ?'
-    ).run(title, content, now, id)
+        `UPDATE Page SET ${setClauses} WHERE id = ?`
+    ).run(...values, id)
 
     return {
         ...existingPage,
-        title,
-        content,
-        updatedAt: now,
+        ...updates,
     }
 })

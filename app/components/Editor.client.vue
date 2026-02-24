@@ -412,7 +412,11 @@ if (provider) {
 }
 
 const editor = useEditor({
-  content: props.modelValue, // Initial content might cause sync issues if not handled carefully, usually rely on Yjs doc
+  // When collaboration is active, do NOT set initial content - the Yjs document
+  // (synced via Hocuspocus) is the sole source of truth. Setting content here would
+  // conflict with the Collaboration extension, which binds to the Yjs XML fragment.
+  // The Yjs doc is seeded from Page.content on the server side when no Yjs state exists.
+  content: provider ? undefined : props.modelValue,
   extensions: extensions,
   editable: props.editable,
   onUpdate: ({ editor }) => {

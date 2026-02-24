@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    libsqlite3-dev \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -37,8 +38,8 @@ COPY --from=build-stage /app/server ./server
 COPY --from=build-stage /app/node_modules ./node_modules
 
 # Rebuild native modules for the target architecture
-RUN npm rebuild better-sqlite3 && \
-    cd .output/server && npm rebuild better-sqlite3
+RUN npm rebuild better-sqlite3 && npm rebuild sqlite3 && \
+    cd .output/server && npm rebuild better-sqlite3 && npm rebuild sqlite3
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data

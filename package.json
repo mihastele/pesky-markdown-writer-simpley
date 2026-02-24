@@ -11,10 +11,14 @@
     "start:collab": "tsx server/collaboration.ts"
   },
   "dependencies": {
+    "@hocuspocus/extension-sqlite": "^3.4.4",
+    "@hocuspocus/provider": "3.4.4",
+    "@hocuspocus/server": "3.4.4",
     "@nuxtjs/tailwindcss": "^6.14.0",
     "@pinia/nuxt": "^0.11.3",
     "@tailwindcss/typography": "^0.5.19",
     "@tiptap/extension-bubble-menu": "3.20.0",
+    "@tiptap/extension-collaboration": "3.20.0",
     "@tiptap/extension-image": "3.20.0",
     "@tiptap/extension-link": "3.20.0",
     "@tiptap/extension-placeholder": "3.20.0",
@@ -26,16 +30,14 @@
     "better-sqlite3": "^12.6.2",
     "clsx": "^2.1.1",
     "jsonwebtoken": "^9.0.3",
+    "linkedom": "^0.18.12",
     "lucide-vue-next": "^0.574.0",
     "nuxt": "^4.3.1",
     "pinia": "^3.0.4",
     "tailwind-merge": "^3.4.1",
+    "tsx": "^4.7.1",
     "vue": "^3.5.28",
     "vue-router": "^4.6.4",
-    "yjs": "^13.6.14",
-    "@hocuspocus/server": "3.4.4",
-    "@hocuspocus/provider": "3.4.4",
-    "@tiptap/extension-collaboration": "3.20.0",
-    "tsx": "^4.7.1"
+    "yjs": "^13.6.14"
   }
 }

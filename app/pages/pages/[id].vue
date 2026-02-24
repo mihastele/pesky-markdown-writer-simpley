@@ -16,6 +16,7 @@
              <div class="text-sm text-gray-400 whitespace-nowrap">
                   <span v-if="saving">Saving...</span>
                   <span v-else-if="saveError" class="text-red-500">Error saving!</span>
+                  <span v-else-if="isCollabActive">Synced</span>
                   <span v-else>Saved</span>
              </div>
         </div>
@@ -120,18 +121,24 @@ const updateTitle = () => {
   }
 }
 
+// Whether collaboration is active (provider connected).
+// When active, the Hocuspocus server handles content persistence via onStoreDocument.
+// We should NOT save content from the client to avoid race conditions and
+// overwriting the Yjs-managed content with stale/empty HTML.
+const isCollabActive = computed(() => !!collabProvider.value)
+
 // Debounce content updates to avoid spamming API
-// We need @vueuse/core or just write own debounce
-// Since I haven't installed @vueuse/core, I'll write a simple debounce
 let timeout: NodeJS.Timeout
 
 const onContentChange = (newContent: string) => {
-  // If we are using collaboration, we might not want to save on every keystroke
-  // but rather rely on Yjs or occasional saves. 
-  // For now, keep saving to DB so persistence works if server restarts.
-  // Yjs syncs in-memory, but we want DB persistence too.
-  
   content.value = newContent
+
+  // When collaboration is active, the Hocuspocus server persists content
+  // (both Yjs binary state AND HTML to Page.content) via its onStoreDocument hook.
+  // Do NOT save content from the client to avoid race conditions.
+  if (isCollabActive.value) return
+
+  // Fallback: if no collaboration, save via HTTP (e.g., if collab server is down)
   clearTimeout(timeout)
   timeout = setTimeout(() => {
     updatePage({ content: newContent })
