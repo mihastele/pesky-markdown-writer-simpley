@@ -47,8 +47,8 @@ const password = ref('')
 const handleRegister = async () => {
   try {
     await auth.register(name.value, email.value, password.value)
-  } catch (e) {
-    alert('Registration failed')
+  } catch (e: any) {
+    alert(e.data?.statusMessage || e.message || 'Registration failed')
   }
 }
 </script>

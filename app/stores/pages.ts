@@ -3,10 +3,11 @@ import { defineStore } from 'pinia'
 type Page = {
     id: string
     title: string
+    content?: string
     parentId: string | null
     updatedAt: string
+    workspaceId?: string
     children?: Page[]
-    // content is not needed in tree usually, but we might want it for preview? No.
 }
 
 export const usePagesStore = defineStore('pages', {
@@ -30,13 +31,19 @@ export const usePagesStore = defineStore('pages', {
     },
     actions: {
         async fetchPages(workspaceId?: string) {
+            console.log('🟢 Store fetchPages called:', { workspaceId })
             this.loading = true
             try {
                 const query = workspaceId ? `?workspaceId=${workspaceId}` : ''
+                console.log('🟢 Store fetching pages from API:', `/api/pages${query}`)
                 const pages = await $fetch<Page[]>(`/api/pages${query}`)
+                console.log('🟢 Store fetched pages:', { 
+                    count: pages.length, 
+                    firstPagePreview: pages[0] ? { id: pages[0].id, title: pages[0].title, contentLength: pages[0].content?.length || 0 } : null 
+                })
                 this.pages = pages
             } catch (e) {
-                console.error('Failed to fetch pages', e)
+                console.error('🟢 Store fetchPages failed:', e)
             } finally {
                 this.loading = false
             }
@@ -50,20 +57,53 @@ export const usePagesStore = defineStore('pages', {
             return page
         },
         async updatePage(id: string, updates: Partial<Page>) {
-            // Optimistic update
-            const index = this.pages.findIndex(p => p.id === id)
-            if (index !== -1) {
-                this.pages[index] = { ...this.pages[index], ...updates }
+            console.log('🟢 Store updatePage called:', { id, updates, isContentUpdate: updates.hasOwnProperty('content') })
+            
+            // Don't do optimistic updates for content to avoid conflicts with collaboration
+            // Only do optimistic updates for metadata like title
+            const isContentUpdate = updates.hasOwnProperty('content')
+            
+            if (!isContentUpdate) {
+                // Optimistic update for non-content changes
+                const index = this.pages.findIndex(p => p.id === id)
+                if (index !== -1) {
+                    console.log('🟢 Store doing optimistic update for non-content')
+                    this.pages[index] = { ...this.pages[index], ...updates } as Page
+                }
+            } else {
+                console.log('🟢 Store skipping optimistic update for content')
             }
 
             try {
-                await $fetch(`/api/pages/${id}`, {
+                console.log('🟢 Store sending API request to update page')
+                const response = await $fetch<Page>(`/api/pages/${id}`, {
                     method: 'PUT',
                     body: updates
                 })
+                
+                console.log('🟢 Store API response received:', { 
+                    responseId: response.id, 
+                    responseTitle: response.title,
+                    responseContentLength: response.content?.length || 0,
+                    responseContentPreview: response.content?.substring(0, 100) + '...'
+                })
+                
+                // Update with server response for all changes
+                const updatedIndex = this.pages.findIndex(p => p.id === id)
+                if (updatedIndex !== -1) {
+                    console.log('🟢 Store updating local state with server response')
+                    this.pages[updatedIndex] = { ...this.pages[updatedIndex], ...response }
+                }
+                
+                return response
             } catch (e) {
-                // Revert or fetch?
-                this.fetchPages()
+                console.error('🟢 Store updatePage failed:', e)
+                // Revert optimistic changes and refetch
+                if (!isContentUpdate) {
+                    console.log('🟢 Store reverting and refetching due to error')
+                    this.fetchPages()
+                }
+                throw e
             }
         },
         async deletePage(id: string) {

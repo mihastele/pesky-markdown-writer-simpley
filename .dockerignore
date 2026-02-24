@@ -1,0 +1,17 @@
+node_modules
+.output
+.nuxt
+.data
+.nitro
+.cache
+dist
+
+*.log
+
+.env
+.env.*
+!.env.example
+
+certs/server.key
+certs/server.crt
+data/

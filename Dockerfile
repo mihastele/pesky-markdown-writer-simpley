@@ -25,8 +25,8 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install openssl for Prisma runtime
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# Install openssl for Prisma runtime and build tools for native module rebuild
+RUN apt-get update && apt-get install -y openssl python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g tsx
 
@@ -38,8 +38,13 @@ COPY --from=build-stage /app/server ./server
 COPY --from=build-stage /app/node_modules ./node_modules
 
 # Rebuild native modules for the target architecture
-RUN npm rebuild better-sqlite3 && npm rebuild sqlite3 && \
-    cd .output/server && npm rebuild better-sqlite3 && npm rebuild sqlite3
+
+#RUN npm rebuild better-sqlite3 && npm rebuild sqlite3 && \
+#    cd .output/server && npm rebuild better-sqlite3 && npm rebuild sqlite3
+
+RUN npm rebuild better-sqlite3 && \
+    npm rebuild better-sqlite3 --prefix .output/server
+
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data

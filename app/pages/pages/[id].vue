@@ -24,6 +24,7 @@
       
       <ClientOnly>
         <Editor 
+            :key="pageId"
             v-model="content" 
             :page-id="pageId"
             :user="currentUser"
@@ -83,13 +84,23 @@ const setProvider = (p: any) => {
 }
 
 const fetchPage = async () => {
+  console.log('🟡 Page fetchPage called:', { pageId: pageId.value })
   loading.value = true
   try {
+    console.log('🟡 Page: Making API request to fetch page')
     const data = await $fetch(`/api/pages/${pageId.value}`)
+    console.log('🟡 Page: API response received:', { 
+      id: data.id, 
+      title: data.title,
+      contentLength: data.content?.length || 0,
+      contentPreview: data.content?.substring(0, 100) + '...'
+    })
     page.value = data
     title.value = data.title
     content.value = data.content || ''
+    console.log('🟡 Page: Local state updated with fetched data')
   } catch (e) {
+    console.error('🟡 Page: Failed to fetch page:', e)
     page.value = null
   } finally {
     loading.value = false
@@ -102,14 +113,24 @@ const saving = ref(false)
 const saveError = ref(false)
 
 const updatePage = async (updates: any) => {
-  if (!page.value) return
+  console.log('🟡 Page updatePage called:', { pageId: pageId.value, updates })
+  if (!page.value) {
+    console.log('🟡 Page: No page value, aborting update')
+    return
+  }
   saving.value = true
   saveError.value = false
   try {
-      await pagesStore.updatePage(pageId.value, updates)
+      console.log('🟡 Page: Calling store updatePage')
+      const result = await pagesStore.updatePage(pageId.value, updates)
+      console.log('🟡 Page: Store updatePage completed:', { 
+          resultId: result.id,
+          resultTitle: result.title,
+          resultContentLength: result.content?.length || 0
+      })
   } catch (e) {
+      console.error('🟡 Page: Update failed:', e)
       saveError.value = true
-      console.error(e)
   } finally {
       saving.value = false
   }
@@ -130,6 +151,14 @@ const isCollabActive = computed(() => !!collabProvider.value)
 // Debounce content updates to avoid spamming API
 let timeout: NodeJS.Timeout
 
+const normalizeHtmlContent = (html?: string) => {
+  return (html || '')
+    .replace(/<[^>]*>/g, '') // strip tags
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 const onContentChange = (newContent: string) => {
   content.value = newContent
 
@@ -139,9 +168,57 @@ const onContentChange = (newContent: string) => {
   if (isCollabActive.value) return
 
   // Fallback: if no collaboration, save via HTTP (e.g., if collab server is down)
+  console.log('🟡 Page onContentChange called:', { 
+    newContentLength: newContent?.length || 0,
+    newContentPreview: newContent?.substring(0, 100) + '...',
+    loading: loading.value,
+    hasPage: !!page.value,
+    pageId: pageId.value
+  })
+  
+  // If we are using collaboration, we might not want to save on every keystroke
+  // but rather rely on Yjs or occasional saves. 
+  // For now, keep saving to DB so persistence works if server restarts.
+  // Yjs syncs in-memory, but we want DB persistence too.
+  
+  // Do not save while still loading/fetching or before page is known.
+  if (loading.value || !page.value) {
+    console.log('🟡 Page: Ignoring content change (loading or no page)')
+    content.value = newContent ?? ''
+    return
+  }
+
+  // Avoid sending empty/unchanged payloads (e.g. when the editor boots with an empty doc
+  // before the fetched content arrives).
+  const incoming = newContent ?? ''
+  const existing = page.value?.content ?? content.value ?? ''
+  const normalizedIncoming = normalizeHtmlContent(incoming)
+  const normalizedExisting = normalizeHtmlContent(existing)
+  
+  console.log('🟡 Page: Content comparison:', {
+    normalizedIncomingLength: normalizedIncoming.length,
+    normalizedExistingLength: normalizedExisting.length,
+    areEqual: normalizedIncoming === normalizedExisting
+  })
+  
+  if (normalizedIncoming === normalizedExisting) {
+    console.log('🟡 Page: Content unchanged, ignoring')
+    content.value = incoming
+    return
+  }
+
+  // If the stored content has meaning but the editor emitted an empty payload, ignore it.
+  if (normalizedExisting && !normalizedIncoming) {
+    console.log('🟡 Page: Ignoring empty payload (existing content has meaning)')
+    return
+  }
+
+  console.log('🟡 Page: Scheduling save with 1s debounce')
+  content.value = incoming
   clearTimeout(timeout)
   timeout = setTimeout(() => {
-    updatePage({ content: newContent })
+    console.log('🟡 Page: Debounce timeout triggered, calling updatePage')
+    updatePage({ content: incoming })
   }, 1000)
 }
 </script>

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'crypto'
 import path from 'path'
+import fs from 'fs'
 
 // Resolve database path from env or default
 let dbPath = process.env.DATABASE_URL || './dev.db'
@@ -9,16 +10,21 @@ if (dbPath.startsWith('file:')) {
 }
 
 // Ensure directory exists
-import fs from 'fs'
 const dbDir = path.dirname(dbPath)
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true })
 }
 
 const db = new Database(dbPath)
+console.log(`[db] Opened database at: ${path.resolve(dbPath)}`)
 
-// Enable WAL mode for better concurrent performance
-db.pragma('journal_mode = WAL')
+// Try to enable WAL mode for better concurrent performance, but allow it to fail
+// gracefully on Windows Docker bind mounts which don't support SHM/mmap.
+try {
+  db.pragma('journal_mode = WAL')
+} catch (e) {
+  console.warn('[db] Failed to enable WAL mode (expected on Docker Desktop Windows bind mounts). Using default journal.')
+}
 db.pragma('foreign_keys = ON')
 
 // Auto-create tables on startup

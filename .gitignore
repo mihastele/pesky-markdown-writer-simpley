@@ -28,7 +28,8 @@ certs/server.key
 certs/server.crt
 
 # Uploads
-/public/uploads
+/public/uploads/*
+!/public/uploads/.gitkeep
 prisma/dev.db
 data/dev.db
 .gitignore
