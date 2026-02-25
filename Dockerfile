@@ -37,11 +37,6 @@ COPY --from=build-stage /app/package-lock.json ./package-lock.json
 COPY --from=build-stage /app/server ./server
 COPY --from=build-stage /app/node_modules ./node_modules
 
-# Rebuild native modules for the target architecture
-
-#RUN npm rebuild better-sqlite3 && npm rebuild sqlite3 && \
-#    cd .output/server && npm rebuild better-sqlite3 && npm rebuild sqlite3
-
 RUN npm rebuild better-sqlite3 && \
     npm rebuild better-sqlite3 --prefix .output/server
 

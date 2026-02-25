@@ -11,7 +11,7 @@
     "start:collab": "tsx server/collaboration.ts"
   },
   "dependencies": {
-    "@hocuspocus/extension-sqlite": "^3.4.4",
+    "@hocuspocus/extension-sqlite": "3.4.4",
     "@hocuspocus/provider": "3.4.4",
     "@hocuspocus/server": "3.4.4",
     "@nuxtjs/tailwindcss": "^6.14.0",

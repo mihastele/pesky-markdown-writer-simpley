@@ -74,7 +74,7 @@ import Collaboration from '@tiptap/extension-collaboration'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import * as Y from 'yjs'
 import { Bold, Italic, Strikethrough, Heading1, Heading2, List, Image as ImageIcon, Trash2 } from 'lucide-vue-next'
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { Extension } from '@tiptap/core'
@@ -131,6 +131,12 @@ const isDragging = ref(false)
 const ydoc = new Y.Doc()
 let provider: HocuspocusProvider | null = null
 
+// Tracks whether the Hocuspocus server has completed the initial Yjs document sync.
+// Used to decide when the HTTP-content fallback should fire.
+let isSynced = false
+// Timer that applies HTTP content if Yjs hasn't synced within the allotted time.
+let syncFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
 if (props.pageId && props.user) {
     // Use wss:// when served over HTTPS so the browser doesn't block the
     // connection as mixed content.  In that case nginx proxies /ws/ to the
@@ -139,23 +145,17 @@ if (props.pageId && props.user) {
         ? `wss://${window.location.host}/ws/`
         : `ws://${window.location.hostname}:1234`
 
-    console.log('Connecting to collaboration server at:', collabUrl)
-
     provider = new HocuspocusProvider({
         url: collabUrl,
         name: `page.${props.pageId}`,
         document: ydoc,
-        onStatus: (event) => {
-            console.log('Collab status:', event.status)
-            if (event.status === 'connected') {
-                console.log('Successfully connected to collaboration server')
-            } else if (event.status === 'disconnected') {
-                console.log('Disconnected from collaboration server')
+        onSynced: () => {
+            isSynced = true
+            if (syncFallbackTimer !== null) {
+                clearTimeout(syncFallbackTimer)
+                syncFallbackTimer = null
             }
         },
-        onConnect: () => {
-            console.log('WebSocket connection established')
-        }
     })
 
     provider?.awareness?.setLocalStateField('user', {
@@ -226,141 +226,8 @@ const focusEditor = () => {
     }
 }
 
-// Custom Cursor Extension
-const CustomCursor = Extension.create({
-  name: 'customCursor',
-
-  addProseMirrorPlugins() {
-    return [
-      new Plugin({
-        key: new PluginKey('customCursor'),
-        props: {
-          decorations: (state) => {
-            if (!provider?.awareness) return null
-            
-            const decorations: Decoration[] = []
-            const awareness = provider.awareness
-            const states = provider?.awareness?.getStates() || []
-            const { doc } = state
-
-            states.forEach((state: any, clientId: number) => {
-              if (clientId === awareness.clientID) return 
-              if (!state.user || !state.user.color || !state.user.name) return
-              
-              // We need cursor position from awareness. 
-              // Usually extension-collaboration handles pushing selection to awareness?
-              // Yes, it does. But we might need to verify format.
-              // Assuming generic Yjs ProseMirror binding format which extension-collaboration uses.
-              // Wait, extension-collaboration relies on y-prosemirror which puts 'cursor' in awareness?
-              // Actually, y-prosemirror handles this automatically if configured?
-              // No, we need to read it.
-              
-              // Simplification: We assume y-prosemirror is active via Collaboration extension.
-              // We need to look at how Tiptap/y-prosemirror stores selection.
-              // It seems we might need to do this manually if we don't use the library?
-              // Actually, the Collaboration extension just syncs the doc. 
-              // The CollaborationCursor extension was responsible for syncing selection to awareness.
-              // So, without it, we need to:
-              // 1. Send our selection to awareness.
-              // 2. Read others' selection from awareness and render cursors.
-            })
-            
-            return DecorationSet.create(doc, decorations)
-          }
-        },
-      })
-    ]
-  }
-})
-
-// We need a plugin to SYNC selection TO awareness since we removed the extension that did it.
-const SelectionSyncExtension = Extension.create({
-    name: 'selectionSync',
-    
-    addProseMirrorPlugins() {
-        return [
-            new Plugin({
-                key: new PluginKey('selectionSync'),
-                view(editorView) {
-                    return {
-                        update(view, prevState) {
-                            if (!provider) return
-                            
-                            // Check if selection changed
-                            if (view.state.selection.eq(prevState.selection)) return
-                            
-                            const { from, to } = view.state.selection
-                             provider?.awareness?.setLocalStateField('selection', {
-                                anchor: from,
-                                head: to
-                            })
-                        }
-                    }
-                }
-            })
-        ]
-    }
-})
-
-// NOW the Cursor Rendering Extension
-const CursorRenderingExtension = Extension.create({
-    name: 'cursorRendering',
-    
-    addProseMirrorPlugins() {
-        return [
-            new Plugin({
-                key: new PluginKey('cursorRendering'),
-                state: {
-                    init() { return DecorationSet.empty },
-                    apply(tr, set, oldState, newState) {
-                        if (!provider) return set.map(tr.mapping, tr.doc)
-                        
-                        // We need to update cursors when awareness changes
-                        // But apply() is synchronous transaction. 
-                        // We'll update only on transaction, relying on the 'update' method below for awareness events?
-                        // Actually, better to just re-create decorations on every render if possible, 
-                        // or trigger a transaction when awareness updates.
-                        return set.map(tr.mapping, tr.doc)
-                    }
-                },
-                props: {
-                    decorations(state) {
-                        return this.getState(state)
-                    }
-                },
-                view(editorView) {
-                    const awarenessListener = () => {
-                         // Force update to re-render decorations
-                         // We can trigger a no-op transaction
-                         const tr = editorView.state.tr.setMeta('addToHistory', false)
-                         editorView.dispatch(tr)
-                    }
-                    
-                    if (provider) {
-                        provider?.awareness?.on('change', awarenessListener)
-                        provider?.awareness?.on('update', awarenessListener)
-                    }
-                    
-                    return {
-                        update(view) {
-                            // Update decorations map based on awareness
-                        },
-                        destroy() {
-                             if (provider) {
-                                provider?.awareness?.off('change', awarenessListener)
-                                provider?.awareness?.off('update', awarenessListener)
-                             }
-                        }
-                    }
-                }
-            })
-        ]
-    }
-})
-
-// Let's retry with a simpler single-plugin approach that calculates decorations in `decorations` prop
-// and forces update on awareness change.
-
+// Custom Cursor + Selection Sync Extension
+// Renders remote cursors as decorations and syncs local selection to awareness.
 const CustomCollaborationExtension = Extension.create({
     name: 'customCollaboration',
     
@@ -440,10 +307,7 @@ const CustomCollaborationExtension = Extension.create({
 })
 
 const extensions: any[] = [
-    StarterKit.configure({
-        // Disable built-in history for collaboration
-        // Note: history is not a valid StarterKit option in newer versions
-    }),
+    StarterKit,
     Image.configure({
       inline: false,
       allowBase64: true,
@@ -463,11 +327,6 @@ if (provider) {
 }
 
 const emitThrottledUpdate = throttle((html: string) => {
-  console.log('🔴 Editor emitting update:', { 
-    htmlLength: html?.length || 0, 
-    htmlPreview: html?.substring(0, 100) + '...',
-    pageId: props.pageId 
-  })
   emit('update:modelValue', html)
 }, 800)
 
@@ -481,12 +340,6 @@ const editor = useEditor({
   editable: props.editable,
   onUpdate: ({ editor }) => {
     const html = editor.getHTML()
-    console.log('🔴 Editor onUpdate triggered:', { 
-      htmlLength: html?.length || 0,
-      htmlPreview: html?.substring(0, 100) + '...',
-      pageId: props.pageId,
-      hasProvider: !!provider
-    })
     emitThrottledUpdate(html)
   },
   editorProps: {
@@ -542,27 +395,46 @@ watch(() => props.editable, (value) => {
   editor.value?.setEditable(!!value)
 })
 
-// Watch for external content changes - CAUTION with YJS
-// Only update if not connected or if completely different doc
-watch(() => props.modelValue, (newValue, oldValue) => {
-  console.log('🔴 Editor modelValue changed:', { 
-    newValueLength: newValue?.length || 0,
-    oldValueLength: oldValue?.length || 0,
-    newValuePreview: newValue?.substring(0, 100) + '...',
-    pageId: props.pageId,
-    hasProvider: !!provider,
-    editorHTML: editor.value?.getHTML()?.substring(0, 100) + '...'
-  })
-  
-  if (!provider && editor.value && newValue !== editor.value.getHTML()) {
-    console.log('🔴 Editor updating content from modelValue (no provider)')
-    editor.value.commands.setContent(newValue, false as any)
-  } else if (provider) {
-    console.log('🔴 Editor ignoring modelValue change (has provider)')
+// Catch the race where fetchPage resolved (and the watch fired) before useEditor's
+// onMounted created the editor instance.  useEditor captures options.content at
+// setup() time; if the fetch completed between setup() and onMounted, the watch
+// fired with editor.value === undefined and the content update was silently dropped.
+// Our onMounted runs after useEditor's onMounted (Vue runs hooks in registration
+// order), so editor.value is guaranteed to be set here.
+onMounted(() => {
+  if (!provider && editor.value?.isEmpty && props.modelValue) {
+    editor.value.commands.setContent(props.modelValue, false as any)
   }
 })
 
+// Watch for external content changes.
+// When collaboration is inactive, keep editor in sync with the parent's model.
+// When collaboration is active but the Yjs document hasn't synced yet (e.g. the
+// server is slow or unreachable), apply the HTTP-fetched content immediately so
+// the editor is never left blank while the user waits.
+watch(() => props.modelValue, (newValue) => {
+  if (!provider && editor.value && newValue !== editor.value.getHTML()) {
+    editor.value.commands.setContent(newValue, false as any)
+  } else if (provider && !isSynced && editor.value?.isEmpty && newValue) {
+    editor.value.commands.setContent(newValue, false as any)
+  }
+})
+
+// Fallback: if the Yjs document hasn't synced within 3 seconds (e.g. collaboration
+// server is down or unreachable), show the HTTP-fetched content so the editor is
+// never permanently blank. The timer is cleared immediately when onSynced fires.
+if (provider) {
+  syncFallbackTimer = setTimeout(() => {
+    if (!isSynced && editor.value?.isEmpty && props.modelValue) {
+      editor.value.commands.setContent(props.modelValue, false as any)
+    }
+  }, 3000)
+}
+
 onBeforeUnmount(() => {
+  if (syncFallbackTimer !== null) {
+    clearTimeout(syncFallbackTimer)
+  }
   editor.value?.destroy()
   provider?.destroy()
   ydoc.destroy()
