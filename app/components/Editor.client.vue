@@ -131,6 +131,12 @@ const isDragging = ref(false)
 const ydoc = new Y.Doc()
 let provider: HocuspocusProvider | null = null
 
+// Tracks whether the Hocuspocus server has completed the initial Yjs document sync.
+// Used to decide when the HTTP-content fallback should fire.
+let isSynced = false
+// Timer that applies HTTP content if Yjs hasn't synced within the allotted time.
+let syncFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
 if (props.pageId && props.user) {
     // Use wss:// when served over HTTPS so the browser doesn't block the
     // connection as mixed content.  In that case nginx proxies /ws/ to the
@@ -143,6 +149,13 @@ if (props.pageId && props.user) {
         url: collabUrl,
         name: `page.${props.pageId}`,
         document: ydoc,
+        onSynced: () => {
+            isSynced = true
+            if (syncFallbackTimer !== null) {
+                clearTimeout(syncFallbackTimer)
+                syncFallbackTimer = null
+            }
+        },
     })
 
     provider?.awareness?.setLocalStateField('user', {
@@ -382,14 +395,34 @@ watch(() => props.editable, (value) => {
   editor.value?.setEditable(!!value)
 })
 
-// Watch for external content changes - only update when not using collaboration
+// Watch for external content changes.
+// When collaboration is inactive, keep editor in sync with the parent's model.
+// When collaboration is active but the Yjs document hasn't synced yet (e.g. the
+// server is slow or unreachable), apply the HTTP-fetched content immediately so
+// the editor is never left blank while the user waits.
 watch(() => props.modelValue, (newValue) => {
   if (!provider && editor.value && newValue !== editor.value.getHTML()) {
+    editor.value.commands.setContent(newValue, false as any)
+  } else if (provider && !isSynced && editor.value?.isEmpty && newValue) {
     editor.value.commands.setContent(newValue, false as any)
   }
 })
 
+// Fallback: if the Yjs document hasn't synced within 3 seconds (e.g. collaboration
+// server is down or unreachable), show the HTTP-fetched content so the editor is
+// never permanently blank. The timer is cleared immediately when onSynced fires.
+if (provider) {
+  syncFallbackTimer = setTimeout(() => {
+    if (!isSynced && editor.value?.isEmpty && props.modelValue) {
+      editor.value.commands.setContent(props.modelValue, false as any)
+    }
+  }, 3000)
+}
+
 onBeforeUnmount(() => {
+  if (syncFallbackTimer !== null) {
+    clearTimeout(syncFallbackTimer)
+  }
   editor.value?.destroy()
   provider?.destroy()
   ydoc.destroy()
