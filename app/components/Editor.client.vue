@@ -74,7 +74,7 @@ import Collaboration from '@tiptap/extension-collaboration'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import * as Y from 'yjs'
 import { Bold, Italic, Strikethrough, Heading1, Heading2, List, Image as ImageIcon, Trash2 } from 'lucide-vue-next'
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { Extension } from '@tiptap/core'
@@ -393,6 +393,18 @@ const editor = useEditor({
 // Keep editable state in sync with prop
 watch(() => props.editable, (value) => {
   editor.value?.setEditable(!!value)
+})
+
+// Catch the race where fetchPage resolved (and the watch fired) before useEditor's
+// onMounted created the editor instance.  useEditor captures options.content at
+// setup() time; if the fetch completed between setup() and onMounted, the watch
+// fired with editor.value === undefined and the content update was silently dropped.
+// Our onMounted runs after useEditor's onMounted (Vue runs hooks in registration
+// order), so editor.value is guaranteed to be set here.
+onMounted(() => {
+  if (!provider && editor.value?.isEmpty && props.modelValue) {
+    editor.value.commands.setContent(props.modelValue, false as any)
+  }
 })
 
 // Watch for external content changes.
