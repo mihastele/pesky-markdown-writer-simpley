@@ -1,4 +1,4 @@
-
+import { db } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
     const user = event.context.user
@@ -8,44 +8,35 @@ export default defineEventHandler(async (event) => {
 
     const id = getRouterParam(event, 'id')
 
-    const existingPage = await prisma.page.findUnique({
-        where: { id },
-        include: { children: true }
-    })
+    const existingPage = db.prepare('SELECT * FROM Page WHERE id = ?').get(id) as any
 
     if (!existingPage) {
         throw createError({ statusCode: 404, statusMessage: 'Page not found' })
     }
 
-    const member = await prisma.workspaceMember.findFirst({
-        where: {
-            userId: user.id,
-            workspaceId: existingPage.workspaceId
-        }
-    })
+    const member = db.prepare(
+        'SELECT id FROM WorkspaceMember WHERE userId = ? AND workspaceId = ?'
+    ).get(user.id, existingPage.workspaceId)
 
     if (!member) {
         throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
     }
 
-    // Recursive delete needed if children exist?
-    // Prisma doesn't cascade delete on self-relation automatically unless configured in schema.
-    // Our schema didn't specify cascade on parent relation.
-    // We can delete children first or update schema.
-    // Let's just delete recursively here or allow Prisma to fail if foreign key constraint.
-    // SQLite doesn't always enforce FK by default unless enabled, but Prisma handles it.
-
-    // Simple recursive delete function or loop
-    // Actually, let's just delete the page. If it has children, we might want to delete them too.
-    // For simplicity, we assume we delete all children.
-
-    // A simple way to delete subtree is to find all descendants.
-    // But let's just try to delete and see if it works (Prisma might throw).
-    // Ideally, update schema adds `onDelete: Cascade`.
-
-    await prisma.page.delete({
-        where: { id }
+    // Delete child pages first (recursive), then the page itself
+    const deleteRecursive = db.transaction(() => {
+        // Recursively find and delete all descendants
+        const deleteChildren = (parentId: string) => {
+            const children = db.prepare('SELECT id FROM Page WHERE parentId = ?').all(parentId) as any[]
+            for (const child of children) {
+                deleteChildren(child.id)
+                db.prepare('DELETE FROM Page WHERE id = ?').run(child.id)
+            }
+        }
+        deleteChildren(id as string)
+        db.prepare('DELETE FROM Page WHERE id = ?').run(id)
     })
+
+    deleteRecursive()
 
     return { success: true }
 })

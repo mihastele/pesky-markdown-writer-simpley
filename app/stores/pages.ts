@@ -3,10 +3,11 @@ import { defineStore } from 'pinia'
 type Page = {
     id: string
     title: string
+    content?: string
     parentId: string | null
     updatedAt: string
+    workspaceId?: string
     children?: Page[]
-    // content is not needed in tree usually, but we might want it for preview? No.
 }
 
 export const usePagesStore = defineStore('pages', {
@@ -36,7 +37,7 @@ export const usePagesStore = defineStore('pages', {
                 const pages = await $fetch<Page[]>(`/api/pages${query}`)
                 this.pages = pages
             } catch (e) {
-                console.error('Failed to fetch pages', e)
+                console.error('fetchPages failed:', e)
             } finally {
                 this.loading = false
             }
@@ -50,20 +51,38 @@ export const usePagesStore = defineStore('pages', {
             return page
         },
         async updatePage(id: string, updates: Partial<Page>) {
-            // Optimistic update
-            const index = this.pages.findIndex(p => p.id === id)
-            if (index !== -1) {
-                this.pages[index] = { ...this.pages[index], ...updates }
+            // Don't do optimistic updates for content to avoid conflicts with collaboration
+            // Only do optimistic updates for metadata like title
+            const isContentUpdate = updates.hasOwnProperty('content')
+            
+            if (!isContentUpdate) {
+                // Optimistic update for non-content changes
+                const index = this.pages.findIndex(p => p.id === id)
+                if (index !== -1) {
+                    this.pages[index] = { ...this.pages[index], ...updates } as Page
+                }
             }
 
             try {
-                await $fetch(`/api/pages/${id}`, {
+                const response = await $fetch<Page>(`/api/pages/${id}`, {
                     method: 'PUT',
                     body: updates
                 })
+                
+                // Update with server response for all changes
+                const updatedIndex = this.pages.findIndex(p => p.id === id)
+                if (updatedIndex !== -1) {
+                    this.pages[updatedIndex] = { ...this.pages[updatedIndex], ...response }
+                }
+                
+                return response
             } catch (e) {
-                // Revert or fetch?
-                this.fetchPages()
+                console.error('updatePage failed:', e)
+                // Revert optimistic changes and refetch
+                if (!isContentUpdate) {
+                    this.fetchPages()
+                }
+                throw e
             }
         },
         async deletePage(id: string) {

@@ -3,11 +3,12 @@ FROM node:20-slim AS build-stage
 
 WORKDIR /app
 
-# Install build dependencies (needed for Prisma and potentially better-sqlite3)
+# Install build dependencies (needed for better-sqlite3 native module)
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    libsqlite3-dev \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -15,9 +16,6 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
-
-# Generate Prisma client
-RUN npx prisma generate
 
 # Build the Nuxt application
 RUN npm run build
@@ -27,13 +25,24 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install openssl for Prisma runtime
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# Install openssl for Prisma runtime and build tools for native module rebuild
+RUN apt-get update && apt-get install -y openssl python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g tsx
 
 # Copy build output and necessary files
 COPY --from=build-stage /app/.output ./.output
-COPY --from=build-stage /app/prisma ./prisma
 COPY --from=build-stage /app/package.json ./package.json
+COPY --from=build-stage /app/package-lock.json ./package-lock.json
+COPY --from=build-stage /app/server ./server
+COPY --from=build-stage /app/node_modules ./node_modules
+
+RUN npm rebuild better-sqlite3 && \
+    npm rebuild better-sqlite3 --prefix .output/server
+
+
+# Create data directory for SQLite
+RUN mkdir -p /app/data
 
 # Environment variables
 ENV NODE_ENV=production

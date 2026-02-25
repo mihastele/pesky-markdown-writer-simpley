@@ -1,32 +1,30 @@
 import jwt from 'jsonwebtoken'
+import { db } from '../utils/db'
 
 const SECRET = process.env.JWT_SECRET || 'changethis'
 
 export default defineEventHandler(async (event) => {
-    // Skip auth check for login/register endpoints
-    if (event.path.startsWith('/api/auth/login') || event.path.startsWith('/api/auth/register')) {
+    // Skip auth check for login/register endpoints and WebSocket
+    if (event.path.startsWith('/api/auth/login') || 
+        event.path.startsWith('/api/auth/register') ||
+        event.path.startsWith('/ws')) {
         return
     }
 
     const token = getCookie(event, 'auth_token')
 
     if (!token) {
-        // If API request, maybe return 401? But for SSR we might want to just not set user.
-        // Let's just return if no token, user will be undefined.
         return
     }
 
     try {
         const decoded: any = jwt.verify(token, SECRET)
-        const user = await prisma.user.findUnique({
-            where: { id: decoded.id },
-            select: { id: true, email: true, name: true }
-        })
+        const user = db.prepare('SELECT id, email, name FROM User WHERE id = ?').get(decoded.id) as any
 
         if (user) {
             event.context.user = user
         }
     } catch (e) {
-        // Token invalid
+        // Token invalid - request continues without a user context
     }
 })

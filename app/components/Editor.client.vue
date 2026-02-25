@@ -70,21 +70,101 @@ import { BubbleMenu } from '@tiptap/vue-3/menus'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Image from '@tiptap/extension-image'
+import Collaboration from '@tiptap/extension-collaboration'
+import { HocuspocusProvider } from '@hocuspocus/provider'
+import * as Y from 'yjs'
 import { Bold, Italic, Strikethrough, Heading1, Heading2, List, Image as ImageIcon, Trash2 } from 'lucide-vue-next'
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
+import { Plugin, PluginKey } from 'prosemirror-state'
+import { Decoration, DecorationSet } from 'prosemirror-view'
+import { Extension } from '@tiptap/core'
 
 const props = withDefaults(defineProps<{
   modelValue: string
   editable?: boolean
+  pageId?: string
+  user?: { name: string, color: string }
 }>(), {
   editable: true,
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'provider'])
+
+// Minimal throttle to limit save frequency while typing
+const throttle = <T extends (...args: any[]) => void>(fn: T, wait: number) => {
+  let last = 0
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  let lastArgs: any[] | null = null
+
+  const invoke = (time: number, args: any[]) => {
+    last = time
+    fn(...args)
+  }
+
+  const throttled = (...args: any[]) => {
+    const now = Date.now()
+    const remaining = wait - (now - last)
+    lastArgs = args
+
+    if (remaining <= 0) {
+      if (timeout) {
+        clearTimeout(timeout)
+        timeout = null
+      }
+      invoke(now, args)
+    } else if (!timeout) {
+      timeout = setTimeout(() => {
+        timeout = null
+        invoke(Date.now(), lastArgs || [])
+      }, remaining)
+    }
+  }
+
+  return throttled as T
+}
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const isUploading = ref(false)
 const isDragging = ref(false)
+
+// Collaboration Setup
+const ydoc = new Y.Doc()
+let provider: HocuspocusProvider | null = null
+
+// Tracks whether the Hocuspocus server has completed the initial Yjs document sync.
+// Used to decide when the HTTP-content fallback should fire.
+let isSynced = false
+// Timer that applies HTTP content if Yjs hasn't synced within the allotted time.
+let syncFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+if (props.pageId && props.user) {
+    // Use wss:// when served over HTTPS so the browser doesn't block the
+    // connection as mixed content.  In that case nginx proxies /ws/ to the
+    // collaboration container.  On plain HTTP (local dev) connect directly.
+    const collabUrl = window.location.protocol === 'https:'
+        ? `wss://${window.location.host}/ws/`
+        : `ws://${window.location.hostname}:1234`
+
+    provider = new HocuspocusProvider({
+        url: collabUrl,
+        name: `page.${props.pageId}`,
+        document: ydoc,
+        onSynced: () => {
+            isSynced = true
+            if (syncFallbackTimer !== null) {
+                clearTimeout(syncFallbackTimer)
+                syncFallbackTimer = null
+            }
+        },
+    })
+
+    provider?.awareness?.setLocalStateField('user', {
+        name: props.user.name,
+        color: props.user.color,
+    })
+    
+    emit('provider', provider)
+}
 
 const triggerImageUpload = () => {
   fileInput.value?.click()
@@ -146,9 +226,87 @@ const focusEditor = () => {
     }
 }
 
-const editor = useEditor({
-  content: props.modelValue,
-  extensions: [
+// Custom Cursor + Selection Sync Extension
+// Renders remote cursors as decorations and syncs local selection to awareness.
+const CustomCollaborationExtension = Extension.create({
+    name: 'customCollaboration',
+    
+    addProseMirrorPlugins() {
+        return [
+            new Plugin({
+                key: new PluginKey('customCollaboration'),
+                props: {
+                   decorations(state) {
+                       if (!provider?.awareness) return DecorationSet.empty
+                       
+                       const { doc } = state
+                       const awareness = provider.awareness
+                       const decorations: Decoration[] = []
+                       
+                       awareness.getStates().forEach((state: any, clientId: number) => {
+                           if (clientId === awareness.clientID) return
+                           if (!state.user || !state.selection) return
+                           
+                           const { anchor, head } = state.selection
+                           const { color, name } = state.user
+                           
+                           if (anchor == null || head == null) return
+                           
+                           // Create cursor element
+                           const cursor = document.createElement('span')
+                           cursor.classList.add('collaboration-cursor__caret')
+                           cursor.style.borderColor = color
+                           cursor.style.backgroundColor = color
+                           
+                           const label = document.createElement('div')
+                           label.classList.add('collaboration-cursor__label')
+                           label.style.backgroundColor = color
+                           label.textContent = name
+                           cursor.appendChild(label)
+                           
+                           decorations.push(Decoration.widget(head, cursor))
+                       })
+                       
+                       return DecorationSet.create(doc, decorations)
+                   } 
+                },
+                view(editorView) {
+                    const updateHandler = () => {
+                         // Trigger update to re-render decorations
+                         // dispatching an empty transaction
+                         editorView.dispatch(editorView.state.tr.setMeta('addToHistory', false))
+                    }
+                    
+                    if (provider?.awareness) {
+                        provider.awareness.on('change', updateHandler)
+                    }
+
+                    return {
+                         update(view, prevState) {
+                             if (!provider?.awareness) return
+                             
+                             // Sync selection to awareness
+                             if (!view.state.selection.eq(prevState.selection)) {
+                                 const { from, to } = view.state.selection
+                                 provider.awareness.setLocalStateField('selection', {
+                                     anchor: from,
+                                     head: to
+                                 })
+                             }
+                         },
+                         destroy() {
+                             if (provider?.awareness) {
+                                 provider.awareness.off('change', updateHandler)
+                             }
+                         }
+                    }
+                }
+            })
+        ]
+    }
+})
+
+const extensions: any[] = [
     StarterKit,
     Image.configure({
       inline: false,
@@ -157,10 +315,32 @@ const editor = useEditor({
     Placeholder.configure({
       placeholder: "Type something... (or drag & drop images)",
     }),
-  ],
+]
+
+if (provider) {
+    extensions.push(
+        Collaboration.configure({
+            document: ydoc,
+        }),
+        CustomCollaborationExtension
+    )
+}
+
+const emitThrottledUpdate = throttle((html: string) => {
+  emit('update:modelValue', html)
+}, 800)
+
+const editor = useEditor({
+  // When collaboration is active, do NOT set initial content - the Yjs document
+  // (synced via Hocuspocus) is the sole source of truth. Setting content here would
+  // conflict with the Collaboration extension, which binds to the Yjs XML fragment.
+  // The Yjs doc is seeded from Page.content on the server side when no Yjs state exists.
+  content: provider ? undefined : props.modelValue,
+  extensions: extensions,
   editable: props.editable,
   onUpdate: ({ editor }) => {
-    emit('update:modelValue', editor.getHTML())
+    const html = editor.getHTML()
+    emitThrottledUpdate(html)
   },
   editorProps: {
       handleDrop: (view, event, slice, moved) => {
@@ -215,15 +395,49 @@ watch(() => props.editable, (value) => {
   editor.value?.setEditable(!!value)
 })
 
-// Watch for external content changes
+// Catch the race where fetchPage resolved (and the watch fired) before useEditor's
+// onMounted created the editor instance.  useEditor captures options.content at
+// setup() time; if the fetch completed between setup() and onMounted, the watch
+// fired with editor.value === undefined and the content update was silently dropped.
+// Our onMounted runs after useEditor's onMounted (Vue runs hooks in registration
+// order), so editor.value is guaranteed to be set here.
+onMounted(() => {
+  if (!provider && editor.value?.isEmpty && props.modelValue) {
+    editor.value.commands.setContent(props.modelValue, false as any)
+  }
+})
+
+// Watch for external content changes.
+// When collaboration is inactive, keep editor in sync with the parent's model.
+// When collaboration is active but the Yjs document hasn't synced yet (e.g. the
+// server is slow or unreachable), apply the HTTP-fetched content immediately so
+// the editor is never left blank while the user waits.
 watch(() => props.modelValue, (newValue) => {
-  if (editor.value && newValue !== editor.value.getHTML()) {
+  if (!provider && editor.value && newValue !== editor.value.getHTML()) {
+    editor.value.commands.setContent(newValue, false as any)
+  } else if (provider && !isSynced && editor.value?.isEmpty && newValue) {
     editor.value.commands.setContent(newValue, false as any)
   }
 })
 
+// Fallback: if the Yjs document hasn't synced within 3 seconds (e.g. collaboration
+// server is down or unreachable), show the HTTP-fetched content so the editor is
+// never permanently blank. The timer is cleared immediately when onSynced fires.
+if (provider) {
+  syncFallbackTimer = setTimeout(() => {
+    if (!isSynced && editor.value?.isEmpty && props.modelValue) {
+      editor.value.commands.setContent(props.modelValue, false as any)
+    }
+  }, 3000)
+}
+
 onBeforeUnmount(() => {
+  if (syncFallbackTimer !== null) {
+    clearTimeout(syncFallbackTimer)
+  }
   editor.value?.destroy()
+  provider?.destroy()
+  ydoc.destroy()
 })
 </script>
 
@@ -252,5 +466,32 @@ onBeforeUnmount(() => {
 }
 .ProseMirror img.ProseMirror-selectednode {
     outline: 2px solid #10b981; /* Emerald-500 */
+}
+
+/* Custom Cursor Styling */
+.collaboration-cursor__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid #0d0d0d;
+  border-right: 1px solid #0d0d0d;
+  word-break: normal;
+  pointer-events: none;
+}
+
+/* Render the Label */
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: normal;
+  user-select: none;
+  color: #fff;
+  padding: 0.1rem 0.3rem;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 </style>

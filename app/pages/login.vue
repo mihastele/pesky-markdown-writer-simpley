@@ -42,8 +42,9 @@ const password = ref('')
 const handleLogin = async () => {
   try {
     await auth.login(password.value, email.value)
-  } catch (e) {
-    alert('Login failed')
+  } catch (e: any) {
+    console.error('Login failed:', e)
+    alert('Login failed. Please check your credentials and try again.')
   }
 }
 </script>
