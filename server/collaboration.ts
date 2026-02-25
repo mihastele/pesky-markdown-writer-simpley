@@ -71,7 +71,11 @@ if (!fs.existsSync(dbDir)) {
 // for persisting Yjs binary state to the `documents` table.
 // This is a separate connection for our custom Page.content synchronization.
 const db = new Database(dbPath)
-db.pragma('journal_mode = WAL')
+try {
+    db.pragma('journal_mode = WAL')
+} catch (e) {
+    console.warn('[Collab] Failed to enable WAL mode. Using default journal.')
+}
 db.pragma('foreign_keys = ON')
 
 /**
@@ -188,19 +192,6 @@ const server = new Server({
             console.error(`[Collab] Failed to save HTML to Page.content:`, e)
         }
     },
-    async onAuthenticate(data) {
-        // For now, allow all connections - in production you'd want to validate tokens
-        return { token: 'authenticated' }
-    },
-    async onLoadDocument(data) {
-        console.log(`Loading document: ${data.documentName}`)
-        // You could load initial document content from database here if needed
-        return null
-    },
-    async onStoreDocument(data) {
-        console.log(`Storing document: ${data.documentName}`)
-        // You could persist document content to database here if needed
-    }
 })
 
 server.listen()

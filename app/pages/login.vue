@@ -43,7 +43,8 @@ const handleLogin = async () => {
   try {
     await auth.login(password.value, email.value)
   } catch (e: any) {
-    alert(e.data?.statusMessage || e.message || 'Login failed')
+    console.error('Login failed:', e)
+    alert('Login failed. Please check your credentials and try again.')
   }
 }
 </script>

@@ -1,11 +1,11 @@
 import { db } from '../../utils/db'
 
-export default defineEventHandler(async (event) => {
-    console.log('🔵 API PUT /api/pages/[id] called')
+// Allowlist of column names that may be updated to prevent SQL injection.
+const ALLOWED_UPDATE_COLUMNS = new Set(['title', 'content', 'updatedAt'])
 
+export default defineEventHandler(async (event) => {
     const user = event.context.user
     if (!user) {
-        console.log('🔵 API: No user found, returning 401')
         throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
     }
 
@@ -13,41 +13,33 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     const { title, content } = body
 
-    console.log('🔵 API: Updating page:', {
-        id,
-        title: title?.substring(0, 50) + '...',
-        contentLength: content?.length || 0,
-        contentPreview: content?.substring(0, 100) + '...'
-    })
-
     const existingPage = db.prepare('SELECT * FROM Page WHERE id = ?').get(id) as any
 
     if (!existingPage) {
-        console.log('🔵 API: Page not found, returning 404')
         throw createError({ statusCode: 404, statusMessage: 'Page not found' })
     }
-
-    console.log('🔵 API: Existing page found:', {
-        id: existingPage.id,
-        title: existingPage.title,
-        existingContentLength: existingPage.content?.length || 0
-    })
 
     const member = db.prepare(
         'SELECT id FROM WorkspaceMember WHERE userId = ? AND workspaceId = ?'
     ).get(user.id, existingPage.workspaceId)
 
     if (!member) {
-        console.log('🔵 API: User not authorized for this page, returning 403')
         throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
     }
 
     const now = new Date().toISOString()
-    // Build dynamic update - only update fields that were actually provided
-    // This prevents nullifying title when only content is sent, and vice versa
+    // Build dynamic update - only update fields that were actually provided.
+    // This prevents nullifying title when only content is sent, and vice versa.
     const updates: Record<string, any> = { updatedAt: now }
     if (title !== undefined) updates.title = title
     if (content !== undefined) updates.content = content
+
+    // Guard against unexpected keys to prevent SQL injection via column names.
+    for (const key of Object.keys(updates)) {
+        if (!ALLOWED_UPDATE_COLUMNS.has(key)) {
+            throw createError({ statusCode: 400, statusMessage: `Invalid field: ${key}` })
+        }
+    }
 
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ')
     const values = Object.values(updates)
@@ -61,35 +53,11 @@ export default defineEventHandler(async (event) => {
     const newTitle = title !== undefined ? title : existingPage.title
     const newContent = content !== undefined ? content : existingPage.content
 
-
-    console.log('🔵 API: Final values to save:', {
-        newTitle: newTitle?.substring(0, 50) + '...',
-        newContentLength: newContent?.length || 0,
-        newContentPreview: newContent?.substring(0, 100) + '...'
-    })
-
-    const result = db.prepare(
-        'UPDATE Page SET title = ?, content = ?, updatedAt = ? WHERE id = ?'
-    ).run(newTitle || "Untitled", newContent, now, id)
-
-    console.log('🔵 API: Database update result:', {
-        changes: result.changes,
-        lastInsertRowid: result.lastInsertRowid
-    })
-
-    const updatedPage = {
+    return {
         ...existingPage,
         ...updates,
-        title: newTitle || "Untitled",
-        content: newContent || "",
+        title: newTitle || 'Untitled',
+        content: newContent ?? '',
         updatedAt: now,
     }
-
-    console.log('🔵 API: Returning updated page:', {
-        id: updatedPage.id,
-        title: updatedPage.title,
-        contentLength: updatedPage.content?.length || 0
-    })
-
-    return updatedPage
 })

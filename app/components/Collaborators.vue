@@ -26,7 +26,9 @@ const users = computed(() => {
   if (!props.provider) return []
   // Hocuspocus/Yjs awareness states
   const states = props.provider.awareness.getStates()
-  return Array.from(states.values()).map((state: any) => state.user).filter((u: any) => u)
+  return Array.from(states.entries())
+    .filter(([clientId, state]: [number, any]) => clientId !== props.provider.awareness.clientID && state.user)
+    .map(([clientId, state]: [number, any]) => ({ ...state.user, clientId }))
 })
 
 const getInitials = (name: string) => {
